@@ -85,27 +85,41 @@ public final class Dtos {
             long shadowHits) {
     }
 
+    /**
+     * @param rangeMinutes  the window the two time series cover, echoed back so the
+     *                      dashboard renders what the server actually applied
+     *                      rather than what it asked for after clamping
+     * @param bucketSeconds width of one bucket in those series, chosen from the
+     *                      range. The client needs it to label an axis honestly:
+     *                      the same chart is "alerts per 10 seconds" over five
+     *                      minutes and "alerts per 6 hours" over a week.
+     */
     public record DashboardStats(
             long totalTransactions, long transactionsLastHour,
             long totalAlerts, long openAlerts,
             double averageRiskScore, BigDecimal flaggedLast24hZar,
             Map<String, Long> alertsBySeverity,
             Map<String, Long> transactionsByCategory,
+            int rangeMinutes, long bucketSeconds,
             List<TimeBucket> alertsOverTime,
             List<SeverityBucket> severityOverTime) {
     }
 
-    public record TimeBucket(Instant hour, long count) {
+    /**
+     * One bucket of alerts. Named {@code bucket} rather than {@code hour} because
+     * it is only an hour at one of the seven selectable ranges.
+     */
+    public record TimeBucket(Instant bucket, long count) {
     }
 
     /**
-     * One hour of alerts, split by severity.
+     * One bucket of alerts, split by severity.
      *
      * <p>{@code counts} always carries every severity, zeros included. A chart
-     * whose series appear and disappear as hours go quiet draws lines that jump
+     * whose series appear and disappear as buckets go quiet draws lines that jump
      * between non-adjacent points, which reads as a spike that never happened.
      */
-    public record SeverityBucket(Instant hour, Map<String, Long> counts) {
+    public record SeverityBucket(Instant bucket, Map<String, Long> counts) {
     }
 
     /** What-if request: a candidate configuration and a window to replay. */

@@ -18,6 +18,30 @@ public class StatsService {
     /** Ordinal, least to most severe. The order the chart legend and stack follow. */
     private static final List<String> SEVERITIES = List.of("LOW", "MEDIUM", "HIGH", "CRITICAL");
 
+    /** Default window when the caller does not ask for one: the trailing day. */
+    public static final int DEFAULT_RANGE_MINUTES = 24 * 60;
+
+    /**
+     * Longest window the dashboard will aggregate — seven days, matching the cap
+     * the replay endpoint already applies. Both are bounded for the same reason:
+     * an unbounded range is a full table scan someone triggers by editing a URL.
+     */
+    public static final int MAX_RANGE_MINUTES = 7 * 24 * 60;
+
+    /**
+     * Bucket widths the series may use, in seconds, ascending.
+     *
+     * <p>A fixed ladder of round numbers rather than {@code range / n}. Buckets
+     * that fall on whole seconds, minutes and hours put boundaries where a reader
+     * expects them — 14:30:00, not 14:27:43 — and keep the axis labels short.
+     */
+    private static final long[] BUCKET_LADDER = {
+            10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 21600, 43200, 86400
+    };
+
+    /** Buckets to aim for. Enough to show a shape, few enough to stay readable. */
+    private static final int TARGET_BUCKETS = 40;
+
     private final AlertRepository alerts;
     private final TransactionReadRepository transactions;
     private final RuleRepository rules;
@@ -29,10 +53,51 @@ public class StatsService {
         this.rules = rules;
     }
 
+    /**
+     * Clamp a requested window to something the server will actually aggregate.
+     * Anything absent, zero or negative falls back to the default rather than
+     * being treated as "all of history".
+     */
+    public static int clampRange(Integer rangeMinutes) {
+        if (rangeMinutes == null || rangeMinutes <= 0) {
+            return DEFAULT_RANGE_MINUTES;
+        }
+        return Math.min(rangeMinutes, MAX_RANGE_MINUTES);
+    }
+
+    /**
+     * The narrowest ladder width that keeps the series under {@link #TARGET_BUCKETS}
+     * points. Falls back to the widest rung if even a day per bucket is not enough,
+     * which the range cap makes unreachable but leaves the method total.
+     */
+    static long bucketSecondsFor(int rangeMinutes) {
+        long rangeSeconds = (long) rangeMinutes * 60;
+        for (long width : BUCKET_LADDER) {
+            if (rangeSeconds / width <= TARGET_BUCKETS) {
+                return width;
+            }
+        }
+        return BUCKET_LADDER[BUCKET_LADDER.length - 1];
+    }
+
+    /** Floor an instant to its bucket boundary, measured from the Unix epoch. */
+    private static Instant binned(Instant t, long bucketSeconds) {
+        return Instant.ofEpochSecond(Math.floorDiv(t.getEpochSecond(), bucketSeconds) * bucketSeconds);
+    }
+
     @Transactional(readOnly = true)
     public DashboardStats dashboard() {
+        return dashboard(DEFAULT_RANGE_MINUTES);
+    }
+
+    @Transactional(readOnly = true)
+    public DashboardStats dashboard(int requestedRangeMinutes) {
+        int rangeMinutes = clampRange(requestedRangeMinutes);
+        long bucketSeconds = bucketSecondsFor(rangeMinutes);
+
         Instant hourAgo = Instant.now().minus(1, ChronoUnit.HOURS);
         Instant dayAgo = Instant.now().minus(24, ChronoUnit.HOURS);
+        Instant rangeStart = Instant.now().minus(rangeMinutes, ChronoUnit.MINUTES);
 
         Map<String, Long> bySeverity = new LinkedHashMap<>();
         for (String s : SEVERITIES) {
@@ -47,10 +112,15 @@ public class StatsService {
             byCategory.put((String) row[0], ((Number) row[1]).longValue());
         }
 
+        Map<Instant, Long> counted = new HashMap<>();
+        for (Object[] row : alerts.bucketedCounts(rangeStart, bucketSeconds)) {
+            counted.put(toInstant(row[0]), ((Number) row[1]).longValue());
+        }
+        // Dense, for the same reason severitySeries is dense: a gap drawn as a
+        // straight line between two distant points invents a trend.
         List<TimeBucket> series = new ArrayList<>();
-        for (Object[] row : alerts.hourlyCounts(dayAgo)) {
-            Instant bucket = row[0] instanceof Timestamp ts ? ts.toInstant() : (Instant) row[0];
-            series.add(new TimeBucket(bucket, ((Number) row[1]).longValue()));
+        for (Instant b : bucketBoundaries(rangeStart, bucketSeconds)) {
+            series.add(new TimeBucket(b, counted.getOrDefault(b, 0L)));
         }
 
         return new DashboardStats(
@@ -60,37 +130,54 @@ public class StatsService {
                 alerts.countByStatus("OPEN"),
                 Optional.ofNullable(alerts.averageRiskScore()).orElse(0.0),
                 Optional.ofNullable(alerts.totalFlaggedSince(dayAgo)).orElse(BigDecimal.ZERO),
-                bySeverity, byCategory, series, severitySeries(dayAgo));
+                bySeverity, byCategory,
+                rangeMinutes, bucketSeconds,
+                series, severitySeries(rangeStart, bucketSeconds));
     }
 
     /**
-     * Alerts per hour split by severity, over the trailing 24 hours.
-     *
-     * <p>Dense, not sparse: every hour in the window is present even when nothing
-     * fired. A line chart built from sparse buckets connects two points an hour
-     * apart across a quiet stretch, drawing a slope that says traffic declined
-     * gradually when in fact it stopped. Zeros make the quiet visible.
+     * Every bucket boundary in the window, oldest first. Computed in Java with the
+     * same epoch origin {@code date_bin} uses in SQL, so a boundary here always
+     * matches a boundary there and the zero-fill lines up instead of doubling
+     * buckets up by a fraction of a width.
      */
-    private List<SeverityBucket> severitySeries(Instant since) {
-        Instant start = since.truncatedTo(ChronoUnit.HOURS);
-        Instant end = Instant.now().truncatedTo(ChronoUnit.HOURS);
+    private static List<Instant> bucketBoundaries(Instant since, long bucketSeconds) {
+        List<Instant> out = new ArrayList<>();
+        Instant end = binned(Instant.now(), bucketSeconds);
+        for (Instant b = binned(since, bucketSeconds); !b.isAfter(end); b = b.plusSeconds(bucketSeconds)) {
+            out.add(b);
+        }
+        return out;
+    }
 
-        Map<Instant, Map<String, Long>> byHour = new LinkedHashMap<>();
-        for (Instant h = start; !h.isAfter(end); h = h.plus(1, ChronoUnit.HOURS)) {
+    private static Instant toInstant(Object value) {
+        return value instanceof Timestamp ts ? ts.toInstant() : (Instant) value;
+    }
+
+    /**
+     * Alerts per bucket split by severity, over the selected window.
+     *
+     * <p>Dense, not sparse: every bucket in the window is present even when
+     * nothing fired. A line chart built from sparse buckets connects two points a
+     * long way apart across a quiet stretch, drawing a slope that says traffic
+     * declined gradually when in fact it stopped. Zeros make the quiet visible.
+     */
+    private List<SeverityBucket> severitySeries(Instant since, long bucketSeconds) {
+        Map<Instant, Map<String, Long>> byBucket = new LinkedHashMap<>();
+        for (Instant b : bucketBoundaries(since, bucketSeconds)) {
             Map<String, Long> zeros = new LinkedHashMap<>();
             SEVERITIES.forEach(s -> zeros.put(s, 0L));
-            byHour.put(h, zeros);
+            byBucket.put(b, zeros);
         }
 
-        for (Object[] row : alerts.hourlyCountsBySeverity(since)) {
-            Instant bucket = row[0] instanceof Timestamp ts ? ts.toInstant() : (Instant) row[0];
-            Map<String, Long> counts = byHour.get(bucket.truncatedTo(ChronoUnit.HOURS));
+        for (Object[] row : alerts.bucketedCountsBySeverity(since, bucketSeconds)) {
+            Map<String, Long> counts = byBucket.get(toInstant(row[0]));
             if (counts != null) {                     // a row on the window boundary
                 counts.put((String) row[1], ((Number) row[2]).longValue());
             }
         }
 
-        return byHour.entrySet().stream()
+        return byBucket.entrySet().stream()
                 .map(e -> new SeverityBucket(e.getKey(), e.getValue()))
                 .toList();
     }
