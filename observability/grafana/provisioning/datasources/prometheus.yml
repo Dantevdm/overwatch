@@ -4,6 +4,11 @@ apiVersion: 1
 
 datasources:
   - name: Prometheus
+    # A stable uid, so the dashboards can name their datasource instead of
+    # relying on isDefault. "Whichever datasource happens to be default" is fine
+    # with exactly one, and silently rebinds every panel in the stack the day a
+    # second one is added — a failure that looks like the queries broke.
+    uid: prometheus
     type: prometheus
     access: proxy
     url: http://prometheus:9090

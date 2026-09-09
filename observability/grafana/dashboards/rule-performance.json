@@ -1,92 +1,474 @@
 {
   "uid": "overwatch-rules",
   "title": "Overwatch — Rule Performance",
-  "tags": ["overwatch", "fraud", "rules"],
+  "description": "Which rules are earning their place, and where the scores they produce actually land.",
+  "tags": [
+    "overwatch",
+    "fraud",
+    "rules"
+  ],
   "timezone": "Africa/Johannesburg",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
+  "editable": true,
   "refresh": "30s",
-  "time": { "from": "now-6h", "to": "now" },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "links": [
+    {
+      "title": "Fraud Overview",
+      "type": "dashboards",
+      "tags": [
+        "fraud"
+      ],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": true,
+      "icon": "external link"
+    }
+  ],
   "panels": [
     {
       "type": "text",
       "title": "",
-      "gridPos": { "h": 3, "w": 24, "x": 0, "y": 0 },
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
       "options": {
         "mode": "markdown",
-        "content": "**Which rules are earning their place.** A rule that never fires is protecting nobody; a rule that fires on everything is noise an analyst learns to ignore. Shadow rules appear separately — they are evaluated against live traffic and record what they would have caught, without raising alerts."
+        "content": "**Which rules are earning their place.** A rule that never fires is protecting nobody; a rule that fires on everything is noise an analyst learns to ignore. Shadow rules appear separately — they are evaluated against live traffic and record what they would have caught, without raising alerts. Every count here is scoped to the time picker above."
       }
     },
     {
       "type": "barchart",
       "title": "Alerts contributed, by rule",
-      "description": "Counts every rule that contributed to an alert, not just the strongest — three weak hits and one strong hit reach a similar score but mean different things.",
-      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 3 },
-      "fieldConfig": { "defaults": { "custom": { "lineWidth": 1, "fillOpacity": 80 } } },
-      "options": { "orientation": "horizontal", "showValue": "always" },
+      "description": "Counts every rule that contributed to an alert in this window, not just the strongest — three weak hits and one strong hit reach a similar score but mean different things. A rule at the bottom of this chart is a candidate for retuning or removal.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 3
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#c81e42"
+          },
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 80
+          }
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "showValue": "always",
+        "legend": {
+          "showLegend": false
+        }
+      },
       "targets": [
         {
-          "expr": "sum by (rule) (fraud_alerts_by_rule_total)",
+          "expr": "sum by (rule) (increase(fraud_alerts_by_rule_total[$__range]))",
           "legendFormat": "{{rule}}",
           "instant": true,
-          "format": "table"
+          "range": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "lastNotNull"
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Field": "rule",
+              "Last *": "alerts"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "field": "alerts",
+                "desc": true
+              }
+            ]
+          }
         }
       ]
     },
     {
       "type": "barchart",
       "title": "Shadow hits, by rule",
-      "description": "What rules under evaluation would have flagged. Nothing here has raised an alert — this is the evidence used to decide whether to promote a rule to ENABLED.",
-      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 3 },
-      "fieldConfig": { "defaults": { "custom": { "lineWidth": 1, "fillOpacity": 60 } } },
-      "options": { "orientation": "horizontal", "showValue": "always" },
+      "description": "What rules under evaluation would have flagged in this window. Nothing here has raised an alert — this is the evidence used to decide whether to promote a rule to ENABLED. Compare the counts against the live rules on the left: a shadow rule firing far more often than any enabled rule would flood an analyst if promoted as-is.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 3
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "purple"
+          },
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 60
+          }
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "showValue": "always",
+        "legend": {
+          "showLegend": false
+        }
+      },
       "targets": [
         {
-          "expr": "sum by (rule) (fraud_shadow_hits_total)",
+          "expr": "sum by (rule) (increase(fraud_shadow_hits_total[$__range]))",
           "legendFormat": "{{rule}}",
           "instant": true,
-          "format": "table"
+          "range": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "lastNotNull"
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "Field": "rule",
+              "Last *": "shadow hits"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "field": "shadow hits",
+                "desc": true
+              }
+            ]
+          }
         }
       ]
     },
     {
       "type": "timeseries",
       "title": "Rule fire rate over time",
-      "description": "A rule whose rate suddenly changes without a corresponding change in traffic is usually a tuning problem, not a fraud wave.",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
-      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 6 } } },
+      "description": "A rule whose rate suddenly changes without a corresponding change in traffic is usually a tuning problem, not a fraud wave — check throughput on the Fraud Overview before concluding anything from a spike here.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 6,
+            "showPoints": "never"
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
       "targets": [
         {
-          "expr": "sum by (rule) (rate(fraud_alerts_by_rule_total[5m]))",
+          "expr": "sum by (rule) (rate(fraud_alerts_by_rule_total[$__rate_interval]))",
           "legendFormat": "{{rule}}"
         }
       ]
     },
     {
-      "type": "histogram",
+      "type": "heatmap",
       "title": "Risk score distribution",
-      "description": "Where scores actually land. A distribution piled against the alert threshold means the weights are doing very little work.",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "description": "Where scores actually land, by band, over time. This is the real distribution from the exported histogram buckets — it previously plotted sum/count, which is a mean, and a mean is the one statistic that cannot show what this panel is for. Scores piling up just under the alerting threshold mean the weights are doing very little work; a distribution spread across the range means they are discriminating.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 20
+      },
+      "options": {
+        "calculate": false,
+        "cellGap": 1,
+        "cellValues": {
+          "unit": "none"
+        },
+        "color": {
+          "mode": "scheme",
+          "scheme": "Reds",
+          "steps": 64,
+          "reverse": false,
+          "exponent": 0.5,
+          "fill": "dark-red"
+        },
+        "filterValues": {
+          "le": 1e-09
+        },
+        "legend": {
+          "show": true
+        },
+        "rowsFrame": {
+          "layout": "auto"
+        },
+        "tooltip": {
+          "show": true,
+          "yHistogram": true
+        },
+        "yAxis": {
+          "unit": "none",
+          "decimals": 2,
+          "min": 0,
+          "max": 1,
+          "axisPlacement": "left"
+        }
+      },
       "targets": [
-        { "expr": "fraud_risk_score_sum / clamp_min(fraud_risk_score_count, 1)", "legendFormat": "mean score" }
+        {
+          "expr": "sum by (le) (increase(fraud_risk_score_bucket[$__interval]))",
+          "legendFormat": "{{le}}",
+          "format": "heatmap"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Risk score percentiles",
+      "description": "The same scores as quantile lines, which is the easier read for \"has tuning changed anything\". Bucket edges sit on tenths plus 0.5 and 0.75, because those are where the severity bands break — so a p95 crossing 0.75 is the moment alerts start arriving as CRITICAL rather than HIGH.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 20
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 2,
+          "min": 0,
+          "max": 1,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.5
+              },
+              {
+                "color": "red",
+                "value": 0.75
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p99"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#8f1030"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p95"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#c81e42"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p50 (median)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(fraud_risk_score_bucket[$__rate_interval])))",
+          "legendFormat": "p50 (median)"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(fraud_risk_score_bucket[$__rate_interval])))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(fraud_risk_score_bucket[$__rate_interval])))",
+          "legendFormat": "p99"
+        }
       ]
     },
     {
       "type": "stat",
-      "title": "Rule evaluation failures",
-      "description": "A rule that throws is contained and counted rather than taking the pipeline down. Anything above zero here needs looking at.",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "title": "Pipeline failures",
+      "description": "Not rule failures, which is what this panel used to claim. `deserialization` is a message the engine could not read, `processing` is one it read and then failed on, and `publish` is an alert that was saved to Postgres but could not be announced on Kafka — a lost notification, not a lost detection. A rule that throws is contained by the engine and shows up as `processing`.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 29
+      },
       "fieldConfig": {
         "defaults": {
+          "unit": "none",
+          "decimals": 0,
           "thresholds": {
             "mode": "absolute",
-            "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }]
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
           }
         }
       },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "orientation": "horizontal"
+      },
       "targets": [
-        { "expr": "sum(transactions_failed_total)", "legendFormat": "failed" },
-        { "expr": "sum(fraud_alerts_publish_failed_total)", "legendFormat": "publish failures" }
+        {
+          "expr": "sum by (reason) (increase(transactions_failed_total[$__range]))",
+          "legendFormat": "{{reason}}",
+          "instant": true
+        },
+        {
+          "expr": "sum(increase(fraud_alerts_publish_failed_total[$__range]))",
+          "legendFormat": "publish",
+          "instant": true
+        }
       ]
     }
   ]
