@@ -7,6 +7,7 @@ import com.overwatch.common.persistence.*;
 import com.overwatch.engine.persistence.repository.*;
 import com.overwatch.engine.rule.RuleEngine;
 import com.overwatch.engine.rule.TransactionHistory;
+import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
@@ -45,6 +46,8 @@ public class TransactionProcessor {
     private final KafkaTemplate<String, Object> kafka;
     private final MeterRegistry meters;
     private final Timer evaluationTimer;
+    private final DistributionSummary riskScore;
+    private final DistributionSummary amountFlagged;
 
     public TransactionProcessor(TransactionRepository transactions,
                                 FraudAlertRepository alerts,
@@ -81,6 +84,40 @@ public class TransactionProcessor {
                 // resolution would sit in the wrong place.
                 .minimumExpectedValue(Duration.ofNanos(100_000))   // 100µs
                 .maximumExpectedValue(Duration.ofSeconds(1))
+                .register(meters);
+
+        // Both of these were plain summaries, which export only _count, _sum and
+        // a rolling _max. That is enough for a mean and nothing else, so the
+        // "Risk score distribution" panel was reduced to plotting
+        // _sum/_count — a single average line under a title promising a
+        // distribution. A mean is the one statistic that cannot answer the
+        // question either panel exists to ask: whether scores pile up against
+        // the threshold, and whether the flagged amounts are a few large ones or
+        // many small ones.
+        //
+        // Explicit bucket edges rather than publishPercentileHistogram(). The
+        // automatic buckets are generated for timers and spread on a fixed
+        // power-of-ten ladder; these two quantities have known, meaningful
+        // edges, and choosing them means the heatmap rows line up with the
+        // numbers people actually reason about instead of 1.7ms-style
+        // boundaries. Both still export _bucket series, so histogram_quantile()
+        // works over them the same way.
+        this.riskScore = DistributionSummary.builder("fraud.risk.score")
+                .description("Composite risk score assigned to each transaction")
+                // 0 to 1 by construction, in tenths, with 0.5 and 0.75 added
+                // because those are where the severity bands actually break.
+                .serviceLevelObjectives(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.9, 1.0)
+                .register(meters);
+
+        this.amountFlagged = DistributionSummary.builder("fraud.amount.flagged.zar")
+                .description("Value of each flagged transaction, in ZAR")
+                .baseUnit("zar")
+                // Bracketing the generator: ordinary merchant ranges start
+                // around R29 and the widest tops out at R120 000, and the
+                // injected high-value pattern reaches R115 000. Edges are round
+                // ZAR figures so the axis reads as money.
+                .serviceLevelObjectives(100, 500, 1_000, 2_500, 5_000,
+                        10_000, 25_000, 50_000, 100_000, 200_000)
                 .register(meters);
 
         // At zero from startup, for the same reason as the consumer's failure
@@ -162,11 +199,11 @@ public class TransactionProcessor {
                 "category", txn.merchantCategory(),
                 "channel", String.valueOf(txn.channel())).increment();
 
-        meters.summary("fraud.risk.score").record(evaluation.riskScore());
+        riskScore.record(evaluation.riskScore());
 
         if (evaluation.isAlert()) {
             meters.counter("fraud.alerts", "severity", evaluation.severity().name()).increment();
-            meters.summary("fraud.amount.flagged.zar").record(txn.amount().doubleValue());
+            amountFlagged.record(txn.amount().doubleValue());
             for (RuleHit hit : evaluation.scoringHits()) {
                 meters.counter("fraud.alerts.by.rule", "rule", hit.ruleType()).increment();
             }
