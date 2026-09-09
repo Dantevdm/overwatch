@@ -50,7 +50,7 @@ jobs:
           detailed_summary: true
 
       - name: Upload coverage and analysis reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: quality-reports
