@@ -128,35 +128,30 @@ JSONB. Changing a threshold is an API call, not a redeploy.
 
 ```java
 public interface FraudRule {
-    String getRuleType();
-    Optional<RuleHit> evaluate(Transaction txn, JsonNode params);
+    String ruleType();
+    Optional<RuleFinding> evaluate(RuleContext context);
 }
 ```
+
+A rule returns a *finding* — a reason and its evidence — and nothing else. Weight
+and whether it alerts at all are applied afterwards from configuration, so the
+same implementation runs live at one weight and in shadow at another without
+knowing which. That separation is what makes shadow mode possible.
+
+The rules depend on nothing but the JDK: parameters arrive as a plain map rather
+than a Jackson node, and card history through a narrow port rather than a
+repository. Every rule is therefore a pure function of its context, unit-testable
+with a hand-written fake and no Spring, no database, no broker.
 
 The orchestrator loads the enabled rule configurations, runs the matching
 implementations, and accumulates a weighted risk score:
 
-```java
-@Component
-public class RuleEngine {
-
-    private final List<FraudRule> rules;
-
-    public Evaluation process(Transaction txn) {
-        List<RuleHit> hits = ruleConfigs.stream()
-                .filter(RuleConfig::isActive)
-                .map(config -> findRule(config.getType())
-                        .evaluate(txn, config.getParameters()))
-                .flatMap(Optional::stream)
-                .toList();
-
-        return Evaluation.of(txn, hits);   // score = Σ weights, severity from score
-    }
-}
-```
-
-Adding a rule type means adding one class. Spring injects it into the list; no
-registry to update, no switch statement to extend.
+The orchestrator does three things worth naming. It discovers rules rather than
+registering them, so adding a detection technique is one class and one database
+row. It keeps shadow hits out of the score, so a rule under evaluation provably
+cannot raise an alert. And it contains a rule that throws — logged and counted,
+never silently swallowed — because one misconfigured rule must not stop the other
+six from protecting anyone.
 
 ### Shipped rules
 
@@ -164,7 +159,7 @@ registry to update, no switch statement to extend.
 |---|---|---|---|
 | High Value | Amount over threshold | R50,000 | 0.40 |
 | Velocity | N transactions on a card in a window | 5 in 10 min | 0.35 |
-| Late Night | Timestamp in the small hours (SAST) | 01:00–04:00 | 0.20 |
+| Late Night | Timestamp in the small hours (SAST) | 01:00–04:59 | 0.20 |
 | Round Amount | Suspiciously round value | ≥ R5,000, multiple of 1,000 | 0.15 |
 | Cross-Border | Country differs from card's home country | home `ZA` | 0.30 |
 | Category Mismatch | Merchant category on the watchlist | crypto, gambling, forex | 0.25 |
@@ -227,8 +222,9 @@ overwatch/
 │   ├── architecture/            # Architecture document and dashboard mockup
 │   ├── design-system/           # i1 design system — UI kit and extracted tokens.css
 │   └── planning/                # Project plan, task list, deferred decisions
-├── common/                      # Shared domain records, events
+├── common/                      # Shared domain records, events, JPA entities
 │   └── src/main/resources/db/migration/   # Flyway migrations — the schema
+├── rule-engine/                 # The rules and the orchestrator (a library)
 ├── transaction-simulator/       # Service 1 — event generation
 ├── fraud-engine/                # Service 2 — rule evaluation
 ├── fraud-api/                   # Service 3 — BFF
@@ -365,12 +361,58 @@ anyone reading the code.
 
 ---
 
+## Postman
+
+`postman/` holds a collection and a local environment. The folders are ordered as a
+guided tour: check health, inject a fraud pattern, watch the alert appear,
+disposition it, then use replay to decide a threshold change. The alert id is
+captured automatically by the list request, so nothing needs editing by hand.
+
+```
+postman/Overwatch.postman_collection.json
+postman/Overwatch-Local.postman_environment.json
+```
+
+If preflight moved a port, `make urls` prints the values to put in the environment.
+The simulator's control endpoints need `make up-tools`, since it is internal to the
+compose network by default.
+
+---
+
+## Verification status
+
+Being straight about what has and has not been executed, because "it compiles" and
+"it works" are different claims.
+
+**Executed and passing.** The domain model and the rule layer are free of Spring by
+design, so they were compiled and run directly: 22 domain assertions, 28 rule
+assertions and 19 orchestrator assertions. Those cover the UTC-to-SAST conversion
+that a late-night rule usually gets quietly wrong, midnight-wrapping windows,
+inclusive boundaries, malformed parameters degrading rather than throwing, shadow
+isolation under a crushing 0.90 weight, and a deliberately exploding rule failing
+to take the others down. Both Flyway migrations were applied to a real PostgreSQL
+16: 5 tables, 20 indexes, 7 seeded rules, 11 constraint assertions, cascade delete
+confirmed, and the velocity lookup checked against 60,000 rows — index-only scan,
+0.027 ms. The generator was run against the real rules: **0.00% false positives
+across 3,000 clean transactions**. Every entity column was checked against the
+migration. The chart palette was measured rather than eyeballed, which caught two
+severity colours 4.1 ΔE apart. Every JSX file was parsed with esbuild.
+
+**Not yet executed.** The full Maven build, Spring wiring, JPA at runtime, Kafka
+serialisation, and `docker compose up` end to end. The environment this was
+assembled in has no Docker and no route to Maven Central. The CI workflow runs all
+of it on every push, and `./scripts/smoke-test.sh` checks a running stack.
+
+---
+
 ## Known gaps
 
 Deliberate omissions, recorded rather than hidden. The full list with reasoning is in
 the project plan.
 
-- **No authentication.** The BFF is the natural place for it; out of scope for the brief.
-- **Single currency.** Everything is ZAR. The `currency` column exists so multi-currency is additive.
-- **Hand-set rule weights.** A learned model would be more interesting and less verifiable.
-- **Polling, not WebSockets.** 5-second polling is sufficient here and considerably simpler.
+- **No authentication.** The BFF is the natural seam for it. Out of scope for the brief, and half-built auth is worse than none.
+- **Single currency.** Everything is ZAR. The `currency` column exists so multi-currency is additive rather than a rewrite.
+- **Hand-set rule weights.** A learned model would be more interesting and considerably less verifiable in the time available.
+- **Polling, not WebSockets.** Five seconds is imperceptible on a dashboard and a fraction of the complexity.
+- **No dead-letter topic.** A poison message is logged and counted rather than stalling the partition; a real deployment would route it somewhere.
+- **Replay ignores history-dependent rules.** Velocity and amount-deviation report nothing there rather than answering from a baseline that does not reflect the replayed window. A wrong answer delivered confidently is the failure mode worth avoiding in a tool meant to inform a threshold change.

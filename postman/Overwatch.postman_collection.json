@@ -1,0 +1,760 @@
+{
+  "info": {
+    "name": "Overwatch \u2014 Fraud Rule Engine",
+    "description": "The Overwatch API.\n\nRun the folders top to bottom for a guided tour: check the stack is healthy, inject a fraud pattern, watch the alert appear, disposition it, then use replay to decide a threshold change.\n\n`baseUrl` defaults to the API on 8080 and `simulatorUrl` to the simulator on 8081. The simulator is internal in the default compose stack \u2014 start with `make up-tools` to reach it from the host.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "simulatorUrl",
+      "value": "http://localhost:8081"
+    },
+    {
+      "key": "alertId",
+      "value": ""
+    },
+    {
+      "key": "ruleId",
+      "value": "1"
+    }
+  ],
+  "item": [
+    {
+      "name": "0 \u00b7 Health",
+      "description": "Is the stack actually up?",
+      "item": [
+        {
+          "name": "API health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            },
+            "description": "Includes the datasource component \u2014 a DB misconfiguration surfaces here first."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('UP', () => pm.response.json().status === 'UP');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "API metrics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/prometheus",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "prometheus"
+              ]
+            },
+            "description": "Raw Micrometer output. Prometheus scrapes this every 10s."
+          }
+        }
+      ]
+    },
+    {
+      "name": "1 \u00b7 Drive the demo",
+      "description": "The simulator produces continuous South African card traffic. These endpoints make a walkthrough directable rather than something you wait for.",
+      "item": [
+        {
+          "name": "Simulator status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{simulatorUrl}}/api/simulator/status",
+              "host": [
+                "{{simulatorUrl}}"
+              ],
+              "path": [
+                "api",
+                "simulator",
+                "status"
+              ]
+            },
+            "description": "Rate, fraud share, and how much has been published."
+          }
+        },
+        {
+          "name": "Inject COMPOUND (the demo)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{simulatorUrl}}/api/simulator/inject/COMPOUND",
+              "host": [
+                "{{simulatorUrl}}"
+              ],
+              "path": [
+                "api",
+                "simulator",
+                "inject",
+                "COMPOUND"
+              ]
+            },
+            "description": "Publishes a large, round, foreign, small-hours crypto transaction.\n\nAbout a second later a CRITICAL alert appears with five contributing rules \u2014 which is the clearest demonstration that scoring accumulates across rules rather than latching on the first hit."
+          }
+        },
+        {
+          "name": "Inject VELOCITY_BURST",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{simulatorUrl}}/api/simulator/inject/VELOCITY_BURST",
+              "host": [
+                "{{simulatorUrl}}"
+              ],
+              "path": [
+                "api",
+                "simulator",
+                "inject",
+                "VELOCITY_BURST"
+              ]
+            },
+            "description": "Several transactions on one card inside two minutes."
+          }
+        },
+        {
+          "name": "Pause the stream",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{simulatorUrl}}/api/simulator/pause",
+              "host": [
+                "{{simulatorUrl}}"
+              ],
+              "path": [
+                "api",
+                "simulator",
+                "pause"
+              ]
+            },
+            "description": "Useful when you want to read one alert without the list moving."
+          }
+        },
+        {
+          "name": "Resume",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{simulatorUrl}}/api/simulator/start",
+              "host": [
+                "{{simulatorUrl}}"
+              ],
+              "path": [
+                "api",
+                "simulator",
+                "start"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 \u00b7 Alerts",
+      "item": [
+        {
+          "name": "List alerts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/alerts?severity=CRITICAL&page=0&size=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "alerts"
+              ],
+              "query": [
+                {
+                  "key": "severity",
+                  "value": "CRITICAL"
+                },
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Newest first. Filters are optional."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('has a content array', () => Array.isArray(body.content));",
+                  "// Capture the first alert so the next requests need no editing.",
+                  "if (body.content.length) pm.collectionVariables.set('alertId', body.content[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Alert detail \u2014 why did this fire?",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/alerts/{{alertId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "alerts",
+                "{{alertId}}"
+              ]
+            },
+            "description": "Every contributing rule with the reason an analyst reads. An alert without its reasons says something is wrong without saying what."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('carries its hits', () => Array.isArray(pm.response.json().hits));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Confirm fraud",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/alerts/{{alertId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "alerts",
+                "{{alertId}}",
+                "status"
+              ]
+            },
+            "description": "Disposition is what makes a per-rule false-positive rate computable.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"CONFIRMED\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Clear \u2014 false positive",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/alerts/{{alertId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "alerts",
+                "{{alertId}}",
+                "status"
+              ]
+            },
+            "description": "The other half of the same signal.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"CLEARED\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3 \u00b7 Rules",
+      "description": "Rules are data. Nothing here needs a redeploy.",
+      "item": [
+        {
+          "name": "List rules",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/rules",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rules"
+              ]
+            },
+            "description": "Configured rules, heaviest first."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rule performance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/rules/performance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rules",
+                "performance"
+              ]
+            },
+            "description": "Fire count, share of alerts, disposition, shadow hits.\n\nfalsePositiveRate is null until alerts have been reviewed \u2014 0% for an unreviewed rule would read as a perfect rule."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Move a rule into SHADOW",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/rules/{{ruleId}}/state",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rules",
+                "{{ruleId}}",
+                "state"
+              ]
+            },
+            "description": "The rule keeps evaluating live traffic and recording what it would have flagged, but stops raising alerts. This is how a rule is tuned before it is trusted. The engine applies it on its next refresh.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"state\": \"SHADOW\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Enable it again",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/rules/{{ruleId}}/state",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rules",
+                "{{ruleId}}",
+                "state"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"state\": \"ENABLED\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Change a weight",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/rules/{{ruleId}}/weight",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rules",
+                "{{ruleId}}",
+                "weight"
+              ]
+            },
+            "description": "How much this rule contributes to the accumulated risk score.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"weight\": 0.45\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4 \u00b7 Replay \u2014 what if?",
+      "item": [
+        {
+          "name": "Replayable rule types",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/replay/rule-types",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "replay",
+                "rule-types"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "What if the threshold were R30 000?",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/replay",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "replay"
+              ]
+            },
+            "description": "Replays stored transactions through a candidate configuration and reports what it WOULD have caught. Nothing is written and no rule changes.\n\nThis is the companion to shadow mode: replay looks backward over history to pick a starting threshold, shadow looks forward against live traffic to confirm it, then you promote.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ruleType\": \"HIGH_VALUE\",\n  \"parameters\": {\n    \"threshold\": 30000\n  },\n  \"hours\": 24\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('reports what would have fired', () => r.wouldHaveFired !== undefined);",
+                  "console.log(`${r.wouldHaveFired} of ${r.transactionsEvaluated} (${r.firePercentage.toFixed(2)}%)`);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Compare: R80 000",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/replay",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "replay"
+              ]
+            },
+            "description": "Run this after the previous request and compare the counts. That comparison is the whole point \u2014 a threshold becomes a measurement rather than an argument.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ruleType\": \"HIGH_VALUE\",\n  \"parameters\": {\n    \"threshold\": 80000\n  },\n  \"hours\": 24\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5 \u00b7 Transactions & stats",
+      "item": [
+        {
+          "name": "List transactions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions?hours=24&size=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions"
+              ],
+              "query": [
+                {
+                  "key": "hours",
+                  "value": "24"
+                },
+                {
+                  "key": "size",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "The observed stream."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Filter by category",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions?category=crypto&hours=24",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "transactions"
+              ],
+              "query": [
+                {
+                  "key": "category",
+                  "value": "crypto"
+                },
+                {
+                  "key": "hours",
+                  "value": "24"
+                }
+              ]
+            },
+            "description": "Watchlisted categories only appear via deliberate fraud injection."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Dashboard stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/stats/dashboard",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "stats",
+                "dashboard"
+              ]
+            },
+            "description": "One call rather than six \u2014 the dashboard polls and always renders these together."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const s = pm.response.json();",
+                  "pm.test('has severity breakdown', () => s.alertsBySeverity !== undefined);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

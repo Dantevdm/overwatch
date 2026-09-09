@@ -190,16 +190,26 @@ adding one class that implements `FraudRule` — no schema migration.
 - [ ] OpenAPI / Swagger
 
 ### Phase 6 — Dashboard
-- [ ] Vite scaffold, tokens.css, app shell
-- [ ] Dashboard, Transactions, Alerts, Rules, Metrics pages
-- [ ] Charts on the brand-derived palette
-- [ ] Live updating
+- [x] Vite scaffold, tokens.css, app shell with routing
+- [x] Dashboard, Transactions, Alerts, Rules pages
+- [x] Hand-authored SVG charts with hover, direct labels and theme-token text
+- [x] Validated severity ramp (see note), 5-second polling
+
+> **Verified.** The severity palette was measured, not chosen by eye. Four status
+> hues put MEDIUM and HIGH 4.1 ΔE apart under normal vision and 0.1 under
+> deuteranopia — indistinguishable. Severity is ordinal, so it now uses one hue
+> stepped light-to-dark, passing monotonic lightness, adjacent-step separation and
+> light-end contrast in both themes independently. Every JSX file was parsed with
+> esbuild; a keyed list using a shorthand fragment was caught and fixed.
 
 ### Phase 7 — Observability
-- [ ] Actuator and Micrometer on all three services
-- [ ] Custom business metrics
-- [ ] Prometheus scrape configuration
-- [ ] Pre-provisioned Grafana dashboards
+- [x] Actuator and Micrometer on all services
+- [x] Business metrics — latency percentiles, alerts by rule, shadow hits, ZAR flagged
+- [x] Prometheus scrape configuration
+- [x] Three pre-provisioned Grafana dashboards: pipeline health, fraud overview, rule performance
+
+> Every PromQL expression was cross-checked against the meter names the engine
+> actually registers, so the dashboards are not querying metrics that do not exist.
 
 ### Phase 7.5 — Quality & CI
 - [x] JaCoCo coverage gate bound to `verify`
@@ -212,9 +222,10 @@ adding one class that implements `FraudRule` — no schema migration.
 - [ ] First green CI run
 
 ### Phase 8 — Delivery
-- [ ] Postman collection with an environment
-- [ ] README with a genuine one-command quickstart
-- [ ] Verification pass — cold `docker compose up` on a clean machine
+- [x] Postman collection — 22 requests in 6 folders, ordered as a guided tour
+- [x] Environment file, with the alert id captured automatically
+- [x] README with a genuine one-command quickstart
+- [ ] Verification pass — cold `docker compose up` on a clean machine (needs Docker)
 
 ---
 

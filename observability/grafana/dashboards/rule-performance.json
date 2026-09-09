@@ -1,0 +1,93 @@
+{
+  "uid": "overwatch-rules",
+  "title": "Overwatch — Rule Performance",
+  "tags": ["overwatch", "fraud", "rules"],
+  "timezone": "Africa/Johannesburg",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "type": "text",
+      "title": "",
+      "gridPos": { "h": 3, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "**Which rules are earning their place.** A rule that never fires is protecting nobody; a rule that fires on everything is noise an analyst learns to ignore. Shadow rules appear separately — they are evaluated against live traffic and record what they would have caught, without raising alerts."
+      }
+    },
+    {
+      "type": "barchart",
+      "title": "Alerts contributed, by rule",
+      "description": "Counts every rule that contributed to an alert, not just the strongest — three weak hits and one strong hit reach a similar score but mean different things.",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 3 },
+      "fieldConfig": { "defaults": { "custom": { "lineWidth": 1, "fillOpacity": 80 } } },
+      "options": { "orientation": "horizontal", "showValue": "always" },
+      "targets": [
+        {
+          "expr": "sum by (rule) (fraud_alerts_by_rule_total)",
+          "legendFormat": "{{rule}}",
+          "instant": true,
+          "format": "table"
+        }
+      ]
+    },
+    {
+      "type": "barchart",
+      "title": "Shadow hits, by rule",
+      "description": "What rules under evaluation would have flagged. Nothing here has raised an alert — this is the evidence used to decide whether to promote a rule to ENABLED.",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 3 },
+      "fieldConfig": { "defaults": { "custom": { "lineWidth": 1, "fillOpacity": 60 } } },
+      "options": { "orientation": "horizontal", "showValue": "always" },
+      "targets": [
+        {
+          "expr": "sum by (rule) (fraud_shadow_hits_total)",
+          "legendFormat": "{{rule}}",
+          "instant": true,
+          "format": "table"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Rule fire rate over time",
+      "description": "A rule whose rate suddenly changes without a corresponding change in traffic is usually a tuning problem, not a fraud wave.",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 6 } } },
+      "targets": [
+        {
+          "expr": "sum by (rule) (rate(fraud_alerts_by_rule_total[5m]))",
+          "legendFormat": "{{rule}}"
+        }
+      ]
+    },
+    {
+      "type": "histogram",
+      "title": "Risk score distribution",
+      "description": "Where scores actually land. A distribution piled against the alert threshold means the weights are doing very little work.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "targets": [
+        { "expr": "fraud_risk_score_sum / clamp_min(fraud_risk_score_count, 1)", "legendFormat": "mean score" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Rule evaluation failures",
+      "description": "A rule that throws is contained and counted rather than taking the pipeline down. Anything above zero here needs looking at.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }]
+          }
+        }
+      },
+      "targets": [
+        { "expr": "sum(transactions_failed_total)", "legendFormat": "failed" },
+        { "expr": "sum(fraud_alerts_publish_failed_total)", "legendFormat": "publish failures" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,113 @@
+{
+  "uid": "overwatch-fraud",
+  "title": "Overwatch — Fraud Overview",
+  "tags": ["overwatch", "fraud"],
+  "timezone": "Africa/Johannesburg",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Transactions processed",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "sum(transactions_processed_total)", "legendFormat": "total" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Alerts raised",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 1 }]
+          }
+        }
+      },
+      "targets": [{ "expr": "sum(fraud_alerts_total)", "legendFormat": "alerts" }]
+    },
+    {
+      "type": "stat",
+      "title": "Alert rate",
+      "description": "Share of processed transactions that became an alert. A sustained climb here usually means a rule needs retuning, not that fraud tripled.",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 3 } },
+      "targets": [
+        {
+          "expr": "sum(fraud_alerts_total) / clamp_min(sum(transactions_processed_total), 1)",
+          "legendFormat": "rate"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Value flagged (ZAR)",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "currencyZAR", "decimals": 0 } },
+      "targets": [
+        { "expr": "sum(fraud_amount_flagged_zar_sum)", "legendFormat": "flagged" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Throughput vs alerts",
+      "description": "Both on one axis deliberately — a second y-scale would let two unrelated shapes look correlated.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 8 } } },
+      "targets": [
+        { "expr": "sum(rate(transactions_processed_total[1m]))", "legendFormat": "transactions/s" },
+        { "expr": "sum(rate(fraud_alerts_total[1m]))", "legendFormat": "alerts/s" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Detection latency",
+      "description": "Ingest to alert. p99 is the number that matters: a card is drained in the tail, not the median.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "lineWidth": 2 } } },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(fraud_detection_latency_seconds_bucket[5m])))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(fraud_detection_latency_seconds_bucket[5m])))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(fraud_detection_latency_seconds_bucket[5m])))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Alerts by severity",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "fieldConfig": { "defaults": { "custom": { "lineWidth": 2, "fillOpacity": 12, "stacking": { "mode": "normal" } } } },
+      "targets": [
+        {
+          "expr": "sum by (severity) (rate(fraud_alerts_total[5m]))",
+          "legendFormat": "{{severity}}"
+        }
+      ]
+    },
+    {
+      "type": "piechart",
+      "title": "Transaction mix by merchant category",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "values": ["value"] } },
+      "targets": [
+        {
+          "expr": "sum by (category) (transactions_processed_total)",
+          "legendFormat": "{{category}}"
+        }
+      ]
+    }
+  ]
+}
