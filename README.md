@@ -35,8 +35,10 @@ To build outside Docker you need **JDK 25** and Maven 3.9+:
 ```bash
 java -version      # expect 25.x
 mvn clean package
-``` The stack comes up with a seeded rule set, a simulator
-already producing transactions, and Grafana dashboards already provisioned.
+```
+
+The stack comes up with a seeded rule set, a simulator already producing
+transactions, and Grafana dashboards already provisioned.
 
 | Surface | URL |
 |---|---|
@@ -237,6 +239,38 @@ overwatch/
 ├── postman/                     # Collection and environment
 └── docker-compose.yml
 ```
+
+---
+
+## Driving the demo
+
+The simulator produces continuous South African card traffic — real merchants
+(Checkers, SPAR Liquor, Takealot, Engen, Clicks), real issuing banks, amounts
+skewed toward small purchases the way genuine spend is. Ordinary traffic
+deliberately never lands in the late-night window and never touches a watchlisted
+category, so those rules only fire on something actually unusual.
+
+A share of traffic is shaped to trip rules, and you can also direct it:
+
+```bash
+curl -X POST localhost:8080/api/simulator/inject/COMPOUND
+```
+
+`COMPOUND` puts a large, round, foreign, small-hours crypto transaction on the
+stream. A CRITICAL alert with five contributing rules appears about a second later
+— which is the clearest demonstration that scoring accumulates across rules rather
+than latching on the first hit.
+
+| Endpoint | Effect |
+|---|---|
+| `GET /api/simulator/status` | Rate, fraud share, totals published |
+| `POST /api/simulator/pause` | Stop the stream — useful for reading a single alert |
+| `POST /api/simulator/start` | Resume |
+| `POST /api/simulator/rate?perSecond=50` | Change throughput without a restart |
+| `POST /api/simulator/inject/{pattern}` | Publish one specific fraud shape now |
+
+Patterns: `HIGH_VALUE`, `VELOCITY_BURST`, `LATE_NIGHT`, `ROUND_AMOUNT`,
+`CROSS_BORDER`, `HIGH_RISK_CATEGORY`, `COMPOUND`.
 
 ---
 

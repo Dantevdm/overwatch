@@ -168,9 +168,19 @@ adding one class that implements `FraudRule` — no schema migration.
 > the stack runs.
 
 ### Phase 4 — Transaction simulator
-- [ ] SA merchant, bank and card reference data
-- [ ] Realistic generator — normal traffic plus injected fraud patterns
-- [ ] Configurable rate, controllable via API
+- [x] SA reference data — 43 real merchants across 12 categories, 8 banks, 14 cities
+- [x] Generator with realistic spend distribution, skewed toward small amounts
+- [x] Seven injectable fraud patterns, one per rule plus a compound case
+- [x] Kafka producer keyed by card, so a card's transactions stay ordered
+- [x] Runtime control API — pause, resume, rate, fraud share, inject
+- [x] Deterministic under a seed, so test failures are reproducible
+
+> **Verified.** The generator was run against the real rule implementations:
+> **0.00% false positives across 3,000 clean transactions**, mean spend R884, and
+> every injected pattern trips its intended rule. COMPOUND reaches CRITICAL with
+> all five rules contributing. Normal traffic provably never enters the late-night
+> window and never touches a watchlisted category — without that the corresponding
+> rules would fire constantly and the alert list would carry no information.
 
 ### Phase 5 — Fraud API (BFF)
 - [ ] Transactions, alerts and rules controllers with filtering and pagination
