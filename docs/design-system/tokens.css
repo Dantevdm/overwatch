@@ -1,0 +1,188 @@
+/* ============================================================================
+   Overwatch — Design Tokens
+   Derived from the i1 Design System foundations (Platform UI Kit).
+
+   This is the single source of truth for colour, typography, spacing, radius,
+   shadow and layout across the Overwatch dashboard. Import it once at the app
+   root and reference tokens by role — never hardcode a hex value in a component.
+
+       import '@/styles/tokens.css';
+
+   Theming: the light palette is defined on bare :root. Dark redefines ONLY the
+   tokens, under two scopes — the prefers-color-scheme media query (OS setting)
+   and the [data-theme="dark"] stamp (explicit user toggle) — so the toggle wins
+   in both directions.
+   ========================================================================= */
+
+:root {
+  /* --- Brand ramp ------------------------------------------------------- */
+  --brand:          #0067a0;
+  --brand-hover:    #005585;
+  --brand-active:   #00456b;
+  --brand-80:       #3385b3;
+  --brand-60:       #66a4c6;
+  --brand-40:       #99c2d9;
+  --brand-20:       #cce1ec;
+  --brand-fg:       #ffffff;
+  --brand-gradient: linear-gradient(to top right, #0067a0 0%, #2f9bd4 100%);
+
+  /* --- Neutrals / surfaces ---------------------------------------------- */
+  --bg:           #ffffff;   /* cards, panels, elevated surfaces */
+  --canvas:       #f8fafc;   /* page background behind cards      */
+  --surface:      #f1f5f9;   /* inset areas, table headers        */
+  --fg:           #0f172a;   /* primary text                      */
+  --muted-fg:     #64748b;   /* secondary / label text            */
+  --border:       #e2e8f0;
+  --input-border: #e2e8f0;
+
+  /* --- Status ----------------------------------------------------------- */
+  --success-bg: #ecfdf5;  --success-fg: #047857;  --success-border: #6ee7b7;
+  --warning-bg: #fffbeb;  --warning-fg: #b45309;  --warning-border: #fcd34d;
+  --info-bg:    #f0f9ff;  --info-fg:    #0369a1;  --info-border:    #7dd3fc;
+  --danger-bg:  #fff1f2;  --danger-fg:  #be123c;  --danger-border:  #fecdd3;
+  --danger:     #f43f5e;
+
+  /* --- Chart palette (brand-derived, sequential) ------------------------- */
+  --chart-1: #0067a0;
+  --chart-2: #2f9bd4;
+  --chart-3: #66a4c6;
+  --chart-4: #99c2d9;
+
+  /* --- Typography ------------------------------------------------------- */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+               'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  --text-xs:   12px;
+  --text-sm:   13px;
+  --text-base: 14px;
+  --text-lg:   16px;
+  --text-xl:   20px;
+  --text-2xl:  28px;
+
+  /* --- Spacing (4px base) ------------------------------------------------ */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* --- Radius ----------------------------------------------------------- */
+  --radius-sm:   4px;
+  --radius-md:   6px;
+  --radius:      8px;
+  --radius-xl:   12px;
+  --radius-full: 9999px;
+
+  /* --- Elevation -------------------------------------------------------- */
+  --shadow-sm: 0 1px 2px 0 rgba(15, 23, 42, .05);
+  --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, .1),
+               0 4px 6px -4px rgba(15, 23, 42, .1);
+
+  /* --- Layout fixtures --------------------------------------------------- */
+  --sidebar-w: 256px;
+  --topbar-h:  56px;
+  --row-pad:   10px 12px;
+
+  /* --- Sidebar (brand-filled shell) -------------------------------------- */
+  --side-bg:     var(--brand);
+  --side-fg:     #ffffff;
+  --side-active: rgba(255, 255, 255, .18);
+  --side-hover:  rgba(255, 255, 255, .10);
+  --side-border: rgba(255, 255, 255, .10);
+}
+
+/* --- Dark: OS setting ----------------------------------------------------- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:           #0f172a;
+    --canvas:       #1e293b;
+    --surface:      #334155;
+    --fg:           #f1f5f9;
+    --muted-fg:     #94a3b8;
+    --border:       #334155;
+    --input-border: #475569;
+
+    --brand:          #3b9fd6;
+    --brand-hover:    #5bb3e0;
+    --brand-20:       #1a3a52;
+    --brand-gradient: linear-gradient(to top right, #1a5276 0%, #2980b9 100%);
+    --side-bg:        #0c2d48;
+
+    --success-bg: #064e3b;  --success-fg: #6ee7b7;  --success-border: #047857;
+    --warning-bg: #451a03;  --warning-fg: #fcd34d;  --warning-border: #b45309;
+    --info-bg:    #0c4a6e;  --info-fg:    #7dd3fc;  --info-border:    #0369a1;
+    --danger-bg:  #4c0519;  --danger-fg:  #fecdd3;  --danger-border:  #be123c;
+    --danger:     #fb7185;
+
+    --chart-1: #3b9fd6;
+    --chart-2: #5bb3e0;
+    --chart-3: #7cc8ea;
+    --chart-4: #9dd8f0;
+  }
+}
+
+/* --- Dark: explicit toggle ------------------------------------------------ */
+:root[data-theme="dark"] {
+  --bg:           #0f172a;
+  --canvas:       #1e293b;
+  --surface:      #334155;
+  --fg:           #f1f5f9;
+  --muted-fg:     #94a3b8;
+  --border:       #334155;
+  --input-border: #475569;
+
+  --brand:          #3b9fd6;
+  --brand-hover:    #5bb3e0;
+  --brand-20:       #1a3a52;
+  --brand-gradient: linear-gradient(to top right, #1a5276 0%, #2980b9 100%);
+  --side-bg:        #0c2d48;
+
+  --success-bg: #064e3b;  --success-fg: #6ee7b7;  --success-border: #047857;
+  --warning-bg: #451a03;  --warning-fg: #fcd34d;  --warning-border: #b45309;
+  --info-bg:    #0c4a6e;  --info-fg:    #7dd3fc;  --info-border:    #0369a1;
+  --danger-bg:  #4c0519;  --danger-fg:  #fecdd3;  --danger-border:  #be123c;
+  --danger:     #fb7185;
+
+  --chart-1: #3b9fd6;
+  --chart-2: #5bb3e0;
+  --chart-3: #7cc8ea;
+  --chart-4: #9dd8f0;
+}
+
+/* --- Base reset ----------------------------------------------------------- */
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  color: var(--fg);
+  background: var(--canvas);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Numeric columns and axis ticks align only with tabular figures. */
+.tabular,
+table td.amount,
+table th { font-variant-numeric: tabular-nums; }
+
+.mono { font-family: var(--font-mono); }
+
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+}

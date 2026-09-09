@@ -1,0 +1,445 @@
+<title>Overwatch Dashboard</title>
+<style>
+:root {
+  --brand:#0067a0;
+  --brand-hover:#005585;
+  --brand-active:#00456b;
+  --brand-80:#3385b3;
+  --brand-60:#66a4c6;
+  --brand-40:#99c2d9;
+  --brand-20:#cce1ec;
+  --brand-fg:#ffffff;
+  --brand-gradient:linear-gradient(to top right,#0067a0 0%,#2f9bd4 100%);
+
+  --bg:#ffffff;
+  --canvas:#f8fafc;
+  --surface:#f1f5f9;
+  --fg:#0f172a;
+  --muted-fg:#64748b;
+  --border:#e2e8f0;
+  --input-border:#e2e8f0;
+
+  --success-bg:#ecfdf5; --success-fg:#047857; --success-border:#6ee7b7;
+  --warning-bg:#fffbeb; --warning-fg:#b45309; --warning-border:#fcd34d;
+  --info-bg:#f0f9ff;    --info-fg:#0369a1;    --info-border:#7dd3fc;
+  --danger-bg:#fff1f2;  --danger-fg:#be123c;  --danger-border:#fecdd3; --danger:#f43f5e;
+
+  --font-sans:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+  --font-mono:ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,monospace;
+
+  --radius-sm:4px; --radius-md:6px; --radius:8px; --radius-xl:12px; --radius-full:9999px;
+  --shadow-sm:0 1px 2px 0 rgba(15,23,42,.05);
+  --shadow-lg:0 10px 15px -3px rgba(15,23,42,.1),0 4px 6px -4px rgba(15,23,42,.1);
+
+  --sidebar-w:256px; --topbar-h:56px;
+  --row-pad:10px 12px;
+
+  --side-bg:var(--brand); --side-fg:#ffffff;
+  --side-active:rgba(255,255,255,.18); --side-hover:rgba(255,255,255,.1);
+  --side-border:rgba(255,255,255,.1);
+
+  /* Chart palette — i1 brand-derived */
+  --chart-1:#0067a0;
+  --chart-2:#2f9bd4;
+  --chart-3:#66a4c6;
+  --chart-4:#99c2d9;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:#0f172a;
+    --canvas:#1e293b;
+    --surface:#334155;
+    --fg:#f1f5f9;
+    --muted-fg:#94a3b8;
+    --border:#334155;
+    --input-border:#475569;
+    --brand:#3b9fd6;
+    --brand-hover:#5bb3e0;
+    --brand-20:#1a3a52;
+    --brand-gradient:linear-gradient(to top right,#1a5276 0%,#2980b9 100%);
+    --side-bg:#0c2d48;
+    --success-bg:#064e3b; --success-fg:#6ee7b7; --success-border:#047857;
+    --warning-bg:#451a03; --warning-fg:#fcd34d; --warning-border:#b45309;
+    --info-bg:#0c4a6e;    --info-fg:#7dd3fc;    --info-border:#0369a1;
+    --danger-bg:#4c0519;  --danger-fg:#fecdd3;  --danger-border:#be123c; --danger:#fb7185;
+    --chart-1:#3b9fd6;
+    --chart-2:#5bb3e0;
+    --chart-3:#7cc8ea;
+    --chart-4:#9dd8f0;
+  }
+}
+:root[data-theme="dark"] {
+  --bg:#0f172a;
+  --canvas:#1e293b;
+  --surface:#334155;
+  --fg:#f1f5f9;
+  --muted-fg:#94a3b8;
+  --border:#334155;
+  --input-border:#475569;
+  --brand:#3b9fd6;
+  --brand-hover:#5bb3e0;
+  --brand-20:#1a3a52;
+  --brand-gradient:linear-gradient(to top right,#1a5276 0%,#2980b9 100%);
+  --side-bg:#0c2d48;
+  --success-bg:#064e3b; --success-fg:#6ee7b7; --success-border:#047857;
+  --warning-bg:#451a03; --warning-fg:#fcd34d; --warning-border:#b45309;
+  --info-bg:#0c4a6e;    --info-fg:#7dd3fc;    --info-border:#0369a1;
+  --danger-bg:#4c0519;  --danger-fg:#fecdd3;  --danger-border:#be123c; --danger:#fb7185;
+  --chart-1:#3b9fd6;
+  --chart-2:#5bb3e0;
+  --chart-3:#7cc8ea;
+  --chart-4:#9dd8f0;
+}
+
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--font-sans);font-size:14px;color:var(--fg);background:var(--canvas);-webkit-font-smoothing:antialiased}
+
+/* Shell */
+.shell{display:flex;height:100vh;overflow:hidden}
+
+/* Sidebar */
+.sidebar{width:var(--sidebar-w);flex:0 0 var(--sidebar-w);display:flex;flex-direction:column;background:var(--side-bg);color:var(--side-fg)}
+.sidebar-logo{height:var(--topbar-h);display:flex;align-items:center;padding:0 16px;gap:10px;border-bottom:1px solid var(--side-border)}
+.sidebar-logo svg{width:28px;height:28px;flex-shrink:0}
+.sidebar-logo span{font-size:16px;font-weight:700;letter-spacing:-.02em}
+.sidebar nav{flex:1;padding:8px 0;overflow-y:auto}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 16px;font-size:13px;font-weight:500;color:rgba(255,255,255,.75);cursor:pointer;border-left:3px solid transparent;transition:background .15s}
+.nav-item:hover{background:var(--side-hover)}
+.nav-item.active{background:var(--side-active);color:#fff;font-weight:600;border-left-color:rgba(255,255,255,.6)}
+.nav-item svg{width:18px;height:18px;opacity:.75;flex-shrink:0}
+.nav-item.active svg{opacity:1}
+.nav-section{padding:16px 16px 6px;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.4)}
+
+/* Main */
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+
+/* Topbar */
+.topbar{height:var(--topbar-h);flex:0 0 var(--topbar-h);display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:var(--bg);border-bottom:1px solid var(--border)}
+.topbar-left{display:flex;align-items:center;gap:8px}
+.topbar-left h1{font-size:18px;font-weight:600;letter-spacing:-.01em;margin:0}
+.topbar-right{display:flex;align-items:center;gap:8px}
+.topbar-btn{height:32px;padding:0 10px;border-radius:var(--radius-md);border:1px solid var(--input-border);background:var(--bg);font-size:13px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;color:var(--fg)}
+.avatar{width:32px;height:32px;border-radius:999px;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600}
+
+/* Content */
+.content{flex:1;overflow-y:auto;padding:24px}
+
+/* Stat tiles */
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+.stat-tile{position:relative;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xl);box-shadow:var(--shadow-sm);padding:18px 20px}
+.stat-label{font-size:13px;font-weight:500;color:var(--muted-fg);margin-bottom:6px;padding-right:48px}
+.stat-value{font-size:28px;font-weight:700;letter-spacing:-.01em;line-height:1.1;font-variant-numeric:tabular-nums}
+.stat-hint{margin-top:6px;font-size:12px;color:var(--muted-fg)}
+.stat-icon{position:absolute;top:16px;right:16px;width:40px;height:40px;border-radius:var(--radius);display:flex;align-items:center;justify-content:center}
+.stat-icon svg{width:20px;height:20px}
+
+/* Chart cards */
+.charts-row{display:grid;grid-template-columns:1.6fr 1fr;gap:16px;margin-bottom:24px}
+.chart-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xl);box-shadow:var(--shadow-sm);overflow:hidden}
+.chart-header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--border)}
+.chart-title{font-size:14px;font-weight:600;margin:0}
+.chart-body{padding:20px}
+
+/* Table card */
+.table-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xl);box-shadow:var(--shadow-sm);overflow:hidden}
+.table-card table{width:100%;border-collapse:collapse;font-size:13px}
+.table-card thead tr{background:var(--surface);border-bottom:1px solid var(--border)}
+.table-card th{text-align:left;padding:var(--row-pad);font-size:12px;font-weight:600;color:var(--muted-fg)}
+.table-card td{padding:var(--row-pad);border-bottom:1px solid var(--border)}
+.table-card tbody tr:nth-child(even){background:var(--surface)}
+.table-card tbody tr:last-child td{border-bottom:none}
+
+/* Badges */
+.badge{display:inline-flex;align-items:center;gap:5px;border-radius:var(--radius-full);padding:2px 10px;font-size:11px;font-weight:500;line-height:1.5;white-space:nowrap}
+.badge::before{content:'';width:5px;height:5px;border-radius:50%;background:currentColor}
+.badge-high{background:var(--danger-bg);color:var(--danger-fg);border:1px solid var(--danger-border)}
+.badge-medium{background:var(--warning-bg);color:var(--warning-fg);border:1px solid var(--warning-border)}
+.badge-low{background:var(--info-bg);color:var(--info-fg);border:1px solid var(--info-border)}
+.badge-open{background:var(--danger-bg);color:var(--danger-fg);border:1px solid var(--danger-border)}
+.badge-reviewing{background:var(--warning-bg);color:var(--warning-fg);border:1px solid var(--warning-border)}
+.badge-clear{background:var(--success-bg);color:var(--success-fg);border:1px solid var(--success-border)}
+
+.mono{font-family:var(--font-mono)}
+.amount{font-variant-numeric:tabular-nums}
+
+/* Live indicator */
+.live-dot{width:7px;height:7px;border-radius:50%;background:#10b981;display:inline-block;animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* Responsive */
+@media(max-width:900px){
+  .stats-grid{grid-template-columns:repeat(2,1fr)}
+  .charts-row{grid-template-columns:1fr}
+}
+@media(max-width:600px){
+  .sidebar{display:none}
+  .stats-grid{grid-template-columns:1fr}
+}
+</style>
+
+<div class="shell">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <svg viewBox="0 0 28 28" fill="none">
+        <rect width="28" height="28" rx="6" fill="rgba(255,255,255,.15)"/>
+        <path d="M14 6L8 10v8l6 4 6-4v-8l-6-4z" stroke="#fff" stroke-width="1.5" fill="none"/>
+        <circle cx="14" cy="14" r="3" fill="#fff" fill-opacity=".9"/>
+      </svg>
+      <span>Overwatch</span>
+    </div>
+
+    <nav>
+      <div class="nav-section">Monitor</div>
+      <div class="nav-item active">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Dashboard
+      </div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
+        Transactions
+      </div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+        Alerts
+        <span style="margin-left:auto;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--danger);color:#fff;font-size:10px;font-weight:600;display:inline-flex;align-items:center;justify-content:center">12</span>
+      </div>
+
+      <div class="nav-section">Configure</div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        Rules
+      </div>
+
+      <div class="nav-section">System</div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+        Metrics
+      </div>
+    </nav>
+
+    <div style="border-top:1px solid var(--side-border);padding:12px 16px;font-size:11px;color:rgba(255,255,255,.4);font-family:var(--font-mono)">v1.0.0 · Overwatch</div>
+  </aside>
+
+  <!-- Main -->
+  <div class="main">
+    <!-- Topbar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <h1>Dashboard</h1>
+        <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--success-fg);font-weight:500"><span class="live-dot"></span>Live</span>
+      </div>
+      <div class="topbar-right">
+        <button class="topbar-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+          Last 24 hours
+        </button>
+        <div class="avatar">DM</div>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <main class="content">
+      <!-- Stat tiles -->
+      <div class="stats-grid">
+        <div class="stat-tile">
+          <div class="stat-label">Total Transactions</div>
+          <div class="stat-value">24,847</div>
+          <div class="stat-hint">+1,293 in last hour</div>
+          <div class="stat-icon" style="background:var(--brand-20);color:var(--brand)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
+          </div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-label">Flagged Transactions</div>
+          <div class="stat-value" style="color:var(--danger-fg)">342</div>
+          <div class="stat-hint">1.38% flag rate</div>
+          <div class="stat-icon" style="background:var(--danger-bg);color:var(--danger-fg)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg>
+          </div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-label">Open Alerts</div>
+          <div class="stat-value" style="color:var(--warning-fg)">12</div>
+          <div class="stat-hint">4 high severity</div>
+          <div class="stat-icon" style="background:var(--warning-bg);color:var(--warning-fg)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+          </div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-label">Avg Risk Score</div>
+          <div class="stat-value">67</div>
+          <div class="stat-hint">across flagged transactions</div>
+          <div class="stat-icon" style="background:var(--success-bg);color:var(--success-fg)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Charts row -->
+      <div class="charts-row">
+        <!-- Trend line chart -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <h3 class="chart-title">Alerts over time (24h)</h3>
+            <span style="font-size:12px;color:var(--muted-fg);font-family:var(--font-mono)">hourly</span>
+          </div>
+          <div class="chart-body">
+            <svg viewBox="0 0 520 200" style="width:100%;height:auto" role="img" aria-label="Line chart showing fraud alerts over 24 hours with a peak around 14:00">
+              <!-- Grid lines -->
+              <line x1="40" y1="10" x2="40" y2="170" stroke="var(--border)" stroke-width="1"/>
+              <line x1="40" y1="170" x2="510" y2="170" stroke="var(--border)" stroke-width="1"/>
+              <line x1="40" y1="130" x2="510" y2="130" stroke="var(--border)" stroke-width=".5" stroke-dasharray="3 3"/>
+              <line x1="40" y1="90" x2="510" y2="90" stroke="var(--border)" stroke-width=".5" stroke-dasharray="3 3"/>
+              <line x1="40" y1="50" x2="510" y2="50" stroke="var(--border)" stroke-width=".5" stroke-dasharray="3 3"/>
+
+              <!-- Y axis labels -->
+              <text x="34" y="174" text-anchor="end" font-size="10" font-family="ui-monospace,monospace" fill="var(--muted-fg)">0</text>
+              <text x="34" y="134" text-anchor="end" font-size="10" font-family="ui-monospace,monospace" fill="var(--muted-fg)">5</text>
+              <text x="34" y="94" text-anchor="end" font-size="10" font-family="ui-monospace,monospace" fill="var(--muted-fg)">10</text>
+              <text x="34" y="54" text-anchor="end" font-size="10" font-family="ui-monospace,monospace" fill="var(--muted-fg)">15</text>
+
+              <!-- X axis labels -->
+              <text x="60" y="188" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace" fill="var(--muted-fg)">00</text>
+              <text x="158" y="188" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace" fill="var(--muted-fg)">06</text>
+              <text x="256" y="188" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace" fill="var(--muted-fg)">12</text>
+              <text x="354" y="188" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace" fill="var(--muted-fg)">18</text>
+              <text x="452" y="188" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace" fill="var(--muted-fg)">24</text>
+
+              <!-- Area fill -->
+              <path d="M60,154 L80,146 L100,150 L120,138 L140,130 L160,122 L180,114 L200,106 L220,90 L240,74 L260,58 L280,50 L300,54 L320,66 L340,74 L360,82 L380,98 L400,106 L420,114 L440,130 L452,138 L452,170 L60,170 Z" fill="var(--chart-1)" fill-opacity=".08"/>
+
+              <!-- Line -->
+              <polyline points="60,154 80,146 100,150 120,138 140,130 160,122 180,114 200,106 220,90 240,74 260,58 280,50 300,54 320,66 340,74 360,82 380,98 400,106 420,114 440,130 452,138" fill="none" stroke="var(--chart-1)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+
+              <!-- Peak marker -->
+              <circle cx="280" cy="50" r="4" fill="var(--chart-1)" stroke="var(--bg)" stroke-width="2"/>
+              <text x="280" y="42" text-anchor="middle" font-size="10" font-weight="600" fill="var(--fg)">15</text>
+            </svg>
+          </div>
+        </div>
+
+        <!-- Severity pie -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <h3 class="chart-title">Alerts by severity</h3>
+          </div>
+          <div class="chart-body" style="display:flex;align-items:center;gap:20px">
+            <svg viewBox="0 0 140 140" style="width:140px;height:140px;flex-shrink:0" role="img" aria-label="Donut chart: 42% HIGH, 33% MEDIUM, 25% LOW severity alerts">
+              <!-- Donut segments — using stroke-dasharray on circles -->
+              <!-- HIGH: 42% -->
+              <circle cx="70" cy="70" r="54" fill="none" stroke="var(--danger-fg)" stroke-width="16" stroke-dasharray="142.2 196.4" stroke-dashoffset="0" transform="rotate(-90 70 70)"/>
+              <!-- MEDIUM: 33% — offset by 142.2 -->
+              <circle cx="70" cy="70" r="54" fill="none" stroke="var(--warning-fg)" stroke-width="16" stroke-dasharray="111.8 226.8" stroke-dashoffset="-144.2" transform="rotate(-90 70 70)"/>
+              <!-- LOW: 25% — offset by 254 -->
+              <circle cx="70" cy="70" r="54" fill="none" stroke="var(--info-fg)" stroke-width="16" stroke-dasharray="84.6 254" stroke-dashoffset="-258" transform="rotate(-90 70 70)"/>
+              <!-- Spacer rings -->
+              <circle cx="70" cy="70" r="54" fill="none" stroke="var(--bg)" stroke-width="18" stroke-dasharray="2 336.6" stroke-dashoffset="0" transform="rotate(-90 70 70)"/>
+              <circle cx="70" cy="70" r="54" fill="none" stroke="var(--bg)" stroke-width="18" stroke-dasharray="2 336.6" stroke-dashoffset="-144.2" transform="rotate(-90 70 70)"/>
+              <circle cx="70" cy="70" r="54" fill="none" stroke="var(--bg)" stroke-width="18" stroke-dasharray="2 336.6" stroke-dashoffset="-258" transform="rotate(-90 70 70)"/>
+              <!-- Center -->
+              <text x="70" y="66" text-anchor="middle" font-size="22" font-weight="700" fill="var(--fg)" font-family="ui-sans-serif,system-ui,sans-serif">342</text>
+              <text x="70" y="82" text-anchor="middle" font-size="10" fill="var(--muted-fg)" font-family="ui-sans-serif,system-ui,sans-serif">total</text>
+            </svg>
+            <div style="display:flex;flex-direction:column;gap:10px;font-size:13px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:10px;height:10px;border-radius:2px;background:var(--danger-fg);flex-shrink:0"></span>
+                <span style="flex:1">HIGH</span>
+                <span style="font-weight:600;font-variant-numeric:tabular-nums">144</span>
+                <span style="color:var(--muted-fg);font-size:12px;font-variant-numeric:tabular-nums">42%</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:10px;height:10px;border-radius:2px;background:var(--warning-fg);flex-shrink:0"></span>
+                <span style="flex:1">MEDIUM</span>
+                <span style="font-weight:600;font-variant-numeric:tabular-nums">113</span>
+                <span style="color:var(--muted-fg);font-size:12px;font-variant-numeric:tabular-nums">33%</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:10px;height:10px;border-radius:2px;background:var(--info-fg);flex-shrink:0"></span>
+                <span style="flex:1">LOW</span>
+                <span style="font-weight:600;font-variant-numeric:tabular-nums">85</span>
+                <span style="color:var(--muted-fg);font-size:12px;font-variant-numeric:tabular-nums">25%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent alerts table -->
+      <div class="table-card">
+        <div class="chart-header">
+          <h3 class="chart-title">Recent alerts</h3>
+          <a href="#" style="font-size:13px;font-weight:500;color:var(--brand);text-decoration:none">View all</a>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Alert ID</th>
+              <th>Transaction</th>
+              <th>Rule</th>
+              <th>Amount</th>
+              <th>Severity</th>
+              <th>Status</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="mono" style="font-size:12px;color:var(--muted-fg)">ALT-0847</td>
+              <td style="font-size:13px">Card ***4821 at Takealot Online</td>
+              <td>High Value</td>
+              <td class="mono amount" style="font-weight:600">R 52,340.00</td>
+              <td><span class="badge badge-high">HIGH</span></td>
+              <td><span class="badge badge-open">OPEN</span></td>
+              <td style="color:var(--muted-fg);font-size:12px">2 min ago</td>
+            </tr>
+            <tr>
+              <td class="mono" style="font-size:12px;color:var(--muted-fg)">ALT-0846</td>
+              <td style="font-size:13px">Card ***7293 — 6 txns in 8 min</td>
+              <td>Velocity</td>
+              <td class="mono amount" style="font-weight:600">R 8,410.50</td>
+              <td><span class="badge badge-high">HIGH</span></td>
+              <td><span class="badge badge-reviewing">REVIEWING</span></td>
+              <td style="color:var(--muted-fg);font-size:12px">14 min ago</td>
+            </tr>
+            <tr>
+              <td class="mono" style="font-size:12px;color:var(--muted-fg)">ALT-0845</td>
+              <td style="font-size:13px">Card ***1054 at Spar Liquor Centurion</td>
+              <td>Late Night</td>
+              <td class="mono amount" style="font-weight:600">R 1,240.00</td>
+              <td><span class="badge badge-medium">MEDIUM</span></td>
+              <td><span class="badge badge-open">OPEN</span></td>
+              <td style="color:var(--muted-fg);font-size:12px">28 min ago</td>
+            </tr>
+            <tr>
+              <td class="mono" style="font-size:12px;color:var(--muted-fg)">ALT-0844</td>
+              <td style="font-size:13px">Card ***3387 at Luno Crypto Exchange</td>
+              <td>Category Mismatch</td>
+              <td class="mono amount" style="font-weight:600">R 15,000.00</td>
+              <td><span class="badge badge-medium">MEDIUM</span></td>
+              <td><span class="badge badge-open">OPEN</span></td>
+              <td style="color:var(--muted-fg);font-size:12px">43 min ago</td>
+            </tr>
+            <tr>
+              <td class="mono" style="font-size:12px;color:var(--muted-fg)">ALT-0843</td>
+              <td style="font-size:13px">Card ***9102 — round R 10,000</td>
+              <td>Round Amount</td>
+              <td class="mono amount" style="font-weight:600">R 10,000.00</td>
+              <td><span class="badge badge-low">LOW</span></td>
+              <td><span class="badge badge-clear">CLEAR</span></td>
+              <td style="color:var(--muted-fg);font-size:12px">1h ago</td>
+            </tr>
+          </tbody>
+        </table>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1px solid var(--border);font-size:12px;color:var(--muted-fg)">
+          <span>Showing 5 of 342</span>
+          <span style="display:flex;gap:6px">
+            <button style="height:28px;padding:0 10px;border-radius:var(--radius-md);border:1px solid var(--input-border);background:var(--bg);font-size:12px;cursor:pointer;color:var(--fg)">Previous</button>
+            <button style="height:28px;padding:0 10px;border-radius:var(--radius-md);border:1px solid var(--input-border);background:var(--bg);font-size:12px;cursor:pointer;color:var(--fg)">Next</button>
+          </span>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
