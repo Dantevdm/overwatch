@@ -50,6 +50,17 @@ public class SimulatorController {
         return status();
     }
 
+    /**
+     * Zero the published/fraud-published counters. Called by the API's data reset
+     * so the Simulator screen agrees with an emptied database instead of claiming
+     * to have published 30,000 transactions that no longer exist anywhere.
+     */
+    @PostMapping("/reset-counters")
+    public Map<String, Object> resetCounters() {
+        simulator.resetCounters();
+        return status();
+    }
+
     /** Change throughput without a restart. Capped at 500/s to protect the demo. */
     @PostMapping("/rate")
     public Map<String, Object> rate(@RequestParam int perSecond) {

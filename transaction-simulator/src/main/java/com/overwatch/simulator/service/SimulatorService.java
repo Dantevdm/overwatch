@@ -137,4 +137,19 @@ public class SimulatorService {
     public long getFraudPublished() {
         return fraudPublished.get();
     }
+
+    /**
+     * Zero the session counters, for a demo starting from a clean slate.
+     *
+     * <p>Only these two. The Micrometer counters behind Prometheus are
+     * deliberately left alone: a Prometheus counter is monotonic by contract, and
+     * `rate()` reads any decrease as a process restart. Resetting them would put
+     * a false spike into every Grafana panel and lose the history the dashboards
+     * exist to show. These two are session bookkeeping for the Simulator screen,
+     * which is a different thing with different rules.
+     */
+    public void resetCounters() {
+        published.set(0);
+        fraudPublished.set(0);
+    }
 }

@@ -38,6 +38,14 @@ overwatch:
     # The simulator's control API, proxied under /api/simulator so the dashboard
     # stays on one origin and the simulator needs no published port.
     simulator-url: ${SIMULATOR_URL:http://localhost:8081}
+    # POST /api/admin/reset clears transactions, alerts and rule hits so a demo
+    # can start from zero. On by default because that is what this stack is for,
+    # and there is no point shipping a reset button that needs a config change to
+    # work. It is a flag rather than a hardcoded true because the endpoint
+    # destroys data and nothing here authenticates: this is the one line a real
+    # deployment sets to false, and the first route that should demand a role once
+    # the BFF grows authentication.
+    allow-reset: ${ALLOW_RESET:true}
 # Actuator: health for compose orchestration, prometheus for scraping.
 # Only what is needed is exposed — this is not "expose: *".
 management:
