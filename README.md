@@ -49,6 +49,11 @@ transactions, and Grafana dashboards already provisioned.
 | API (Swagger) | http://localhost:8080/swagger-ui.html |
 | Grafana | http://localhost:3000 |
 | Prometheus | http://localhost:9090 |
+| Redpanda Console | http://localhost:8090 |
+
+Every one of these is also linked from **External tools** at the foot of the
+dashboard's sidebar, following whatever ports preflight assigned — so a reviewer
+never has to be told which port Grafana landed on.
 
 Once it is up, `./scripts/smoke-test.sh` verifies the stack is wired together —
 service health, metrics endpoints, Prometheus targets, Grafana provisioning and
@@ -56,13 +61,14 @@ broker/database connectivity.
 
 ### Ports
 
-The stack publishes exactly four ports — the four things a person opens. Postgres,
-Redpanda, the fraud engine and the simulator stay inside the compose network,
-because nothing outside it needs them: Prometheus scrapes over Docker DNS. Fewer
-published ports means fewer things that can collide with whatever else is running
-on your machine.
+The stack publishes exactly five ports — the five things a person opens: the
+dashboard, the API, Grafana, Prometheus and the Redpanda Console. Postgres, the
+Kafka listener, the fraud engine and the simulator stay inside the compose
+network, because nothing outside it needs them: Prometheus scrapes over Docker
+DNS. Fewer published ports means fewer things that can collide with whatever else
+is running on your machine.
 
-`make up` runs `scripts/preflight.sh` first, which checks those four, picks a free
+`make up` runs `scripts/preflight.sh` first, which checks those five, picks a free
 alternative for any that are taken, and writes the overrides to `.env`. You should
 never have to think about it. To check without starting anything:
 
@@ -120,6 +126,15 @@ is querying alerts.
 | `fraud-engine` | 8082 | Rule evaluation, scoring, alert persistence |
 | `fraud-api` | 8080 | REST API over transactions, alerts, rules and stats |
 | `overwatch-ui` | 5173 | React + Vite dashboard |
+
+Alongside them the stack runs PostgreSQL, Redpanda, Prometheus, Grafana and the
+**Redpanda Console** — the broker's own web UI, on 8090. It is worth a container
+because streaming is the one step you otherwise have to take on faith: without it,
+transactions go into a topic and alerts come out with nothing to look at in
+between. The console shows the actual JSON on `transactions` and `fraud-alerts`,
+the partitions, and the engine's consumer-group lag moving in real time. It is
+read-only and, like everything else here, unauthenticated — a window onto the
+broker for a demonstration, not an admin console.
 
 ---
 
@@ -184,8 +199,8 @@ weighted score, and the total determines severity. A transaction tripping Late N
 and Round Amount scores 0.5 — worth a look, not worth blocking a card over. Fraud
 detection is probabilistic and the model reflects that.
 
-**Rule performance statistics.** `GET /api/rules/{id}/stats` returns fire count, share
-of total alerts, mean score contribution and false-positive rate. This is what you
+**Rule performance statistics.** `GET /api/rules/performance` returns, for every
+rule, its fire count, share of total alerts, shadow hits and false-positive rate. This is what you
 need to decide whether a rule is earning its keep, and it is the first thing that goes
 missing in a rules engine nobody instrumented.
 
@@ -201,7 +216,7 @@ headline figures keep their own fixed periods, because silently rescoping "open
 alerts awaiting an analyst" to five minutes answers a different question from the
 one the label asks.
 
-**Replay / what-if.** `POST /api/rules/replay` takes a candidate configuration and a
+**Replay / what-if.** `POST /api/replay` takes a candidate configuration and a
 time window, replays stored transactions through it, and returns the alerts it *would*
 have generated — writing nothing. "What if the high-value threshold were R30,000?"
 becomes a measurement instead of an argument.
@@ -224,6 +239,7 @@ The metrics are business metrics, not just request counters:
 | `transactions_processed_total` | Throughput, by merchant category and channel |
 | `fraud_shadow_hits_total` | What shadow rules would have caught |
 | `kafka_consumer_fetch_manager_records_lag` | Whether detection is keeping pace with traffic |
+| `simulator_diurnal_weight` | The time-of-day multiplier currently applied to the rate — explains a throughput change that is not a fault |
 | `logback_events_total{level="error"}` | Error rate, without reading logs |
 
 All three distributions are exported as Prometheus **histograms** rather than as
@@ -329,11 +345,44 @@ guess is `../pom.xml` and the modules are now two levels down.
 
 ## Driving the demo
 
+> For a structured walkthrough — a fifteen-minute running order with what to say
+> at each step, a five-minute cut, the questions you will be asked and what to do
+> when a panel is empty — see [`docs/DEMO.md`](docs/DEMO.md).
+
 The simulator produces continuous South African card traffic — real merchants
 (Checkers, SPAR Liquor, Takealot, Engen, Clicks), real issuing banks, amounts
-skewed toward small purchases the way genuine spend is. Ordinary traffic
-deliberately never lands in the late-night window and never touches a watchlisted
-category, so those rules only fire on something actually unusual.
+skewed toward small purchases the way genuine spend is. Ordinary traffic never
+touches a watchlisted category, so the category rule only fires on something
+actually unusual.
+
+**The stream is shaped, not flat.** Three things stop it looking synthetic, and
+each was added after measuring the old behaviour rather than by guessing:
+
+*Volume follows a diurnal curve.* A 24-point hourly shape — quiet from midnight to
+five, a morning build, a lunch bump, an evening commute peak, then decline — is
+interpolated to the minute in SAST and multiplies the configured rate. The curve is
+normalised to average exactly 1.0, so "50 per second" remains the daily mean rather
+than becoming a ceiling. The current multiplier is exported as
+`simulator_diurnal_weight`, so the shape is visible in Grafana next to the
+throughput it explains.
+
+*Arrivals are Poisson, not fixed.* Each tick draws its batch size from a Poisson
+distribution around the expected rate instead of publishing the same count every
+time. Real card traffic arrives independently; a fixed count per tick produces a
+throughput line so flat it is obviously generated. Measured over ten minutes, the
+coefficient of variation went from 0.0004 — a straight line — to 0.095.
+
+*The category mix is weighted.* Merchants are drawn by a weighted choice over
+`CATEGORY_WEIGHTS` (groceries 22, fuel 14, restaurant and retail 11, down to
+liquor 3), not uniformly from the merchant list. Uniform selection made the mix a
+function of how many merchants of each kind happened to be listed, which meant the
+pie chart described the fixture file rather than South African card spend.
+
+One consequence worth stating: ordinary traffic is now stamped with the real
+current time, so between 01:00 and 04:59 SAST the late-night rule fires on genuine
+traffic. That is the correct behaviour — a rule that only ever triggers on injected
+data has not been demonstrated — but it means the alert rate is time-of-day
+dependent, and the small hours are the interesting time to watch.
 
 A share of traffic is shaped to trip rules, and you can also direct it — from the
 **Simulator** screen in the dashboard, or over the API:
@@ -491,6 +540,7 @@ anyone reading the code.
 | [`docs/architecture/overwatch-architecture.html`](docs/architecture/overwatch-architecture.html) | Full architecture — diagram, schema, API contracts, Docker topology |
 | [`docs/architecture/overwatch-dashboard-mockup.html`](docs/architecture/overwatch-dashboard-mockup.html) | Working dashboard mockup |
 | [`docs/planning/PROJECT-PLAN.md`](docs/planning/PROJECT-PLAN.md) | Task list, progress, deferred decisions |
+| [`docs/DEMO.md`](docs/DEMO.md) | How to run a demonstration of this system, and what to say |
 | [`docs/design-system/tokens.css`](docs/design-system/tokens.css) | Design tokens the UI imports |
 
 ---
@@ -533,22 +583,27 @@ migration. The chart palette was measured rather than eyeballed, which caught tw
 severity colours 4.1 ΔE apart. Every JSX file was parsed with esbuild.
 
 **Also executed, on a machine with Docker and Maven.** `mvn clean verify` passes
-green across all five modules — 68 tests, plus JaCoCo, SpotBugs with find-sec-bugs,
+green across all five modules — 80 tests, plus JaCoCo, SpotBugs with find-sec-bugs,
 and PMD. The stack was brought up cold with `docker compose up --build`: Flyway
 migrated, Hibernate's `ddl-auto: validate` accepted every entity against the
 migrated schema, the simulator published, the engine consumed and scored, and
 alerts landed in PostgreSQL — so Spring wiring, JPA at runtime and Kafka
 serialisation are all exercised rather than assumed. `./scripts/smoke-test.sh`
-reports 20 of 20. Every API endpoint was exercised against live data, including
+reports 35 of 35, and `./scripts/verify-dashboards.py` confirms all 45 panel
+queries return series against the live Prometheus. Every API endpoint was exercised against live data, including
 each optional filter, and all five dashboard screens were loaded in a browser
 against the running stack. The headline demonstration was confirmed end to end:
 `POST /api/simulator/inject/COMPOUND` produces a CRITICAL alert with five
 contributing rules and a score capped at 1.0, about a second later.
 
-**Still not executed.** A first green run of the GitHub Actions workflow — CI has
-not run against these commits, only the equivalent commands locally. And there is
-still no automated integration test through a real broker; the broker path is
-covered by the compose stack and the smoke test rather than by Testcontainers.
+The same verification was re-run after the repository restructure, since moving
+every module is exactly the kind of change that compiles and then fails to
+package: `mvn clean verify` green, all four images built, nine containers healthy,
+smoke test 35 of 35, dashboards 45 of 45.
+
+**Still not executed.** There is no automated integration test through a real
+broker; the broker path is covered by the compose stack and the smoke test rather
+than by Testcontainers.
 
 ---
 

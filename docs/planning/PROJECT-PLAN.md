@@ -397,6 +397,143 @@ the gaps that made the rewrite necessary are the interesting part.
 > The panel descriptions say so, and the smoke test polls instead of asserting once,
 > because a flaky check is worse than no check.
 
+### Phase 8.9 — A transaction stream that is not a straight line
+
+The generator was producing traffic whose *content* was realistic and whose
+*shape* was not. Three separate uniformities, each found by measuring rather than
+by reading the code.
+
+- [x] **Diurnal volume curve** — a 24-point hourly shape interpolated to the
+      minute in SAST, normalised to average exactly 1.0 so the configured rate
+      stays the daily mean rather than becoming a ceiling
+- [x] **Poisson arrivals** (Knuth's method) replacing a fixed batch per tick
+- [x] **Weighted category mix** — `CATEGORY_WEIGHTS`, drawn by cumulative weight,
+      replacing a uniform draw over the merchant list
+- [x] **Real timestamps** — ordinary traffic is stamped with the current instant
+      rather than being scattered across a synthetic business-hours window
+- [x] `Clock` injected into the generator, so the time-dependent behaviour is
+      unit-testable instead of dependent on when the suite happens to run
+- [x] `simulator_diurnal_weight` exported, so the curve is visible next to the
+      throughput it explains
+- [x] `DiurnalCurveTest` (4 assertions) and three new generator assertions
+
+> **A flat line, quantified.** The suspicion was that the throughput chart looked
+> synthetic. Measured over ten minutes it was worse than it looked: 28.0 tx/s with
+> a standard deviation of 0.01 — a coefficient of variation of 0.0004, which is
+> not "low variance", it is a ruled line with a rounding error. After Poisson
+> arrivals plus the diurnal curve, cv is 0.095 and the observed mean tracks the
+> curve's current multiplier.
+>
+> **The pie chart was describing the fixture file.** The category mix came out at
+> exactly merchant-count-per-category / 36 — because merchants were drawn
+> uniformly from a flat list, so the mix was a function of how many of each kind I
+> had happened to type in. Groceries had six entries and therefore 16.7% of all
+> spend. It now draws by weight, and a live 20-minute sample lands within half a
+> point of the configured weights (groceries 21.5% against 22, liquor 3.0% against
+> 3).
+>
+> **47 of 1 316 transactions were dated in the future.** The old code stamped
+> ordinary traffic by picking a random hour inside a business-hours window on
+> *today's* date, which is in the future for most of the day. It also produced a
+> perfectly uniform 07:00–21:59 spread of `occurred_at`, meaning any query grouping
+> by hour showed a rectangle. Both are gone: 0 future-dated rows and 0 rows stamped
+> after their own insert, across 743 transactions from the current build.
+>
+> One deliberate consequence: ordinary traffic can now trip the late-night rule
+> between 01:00 and 04:59 SAST, because it is genuinely late at night. A rule that
+> only ever fires on injected data has not been demonstrated — but it does mean the
+> alert rate is time-of-day dependent, which the README and demo guide both say.
+>
+> `Map.of` caps at ten pairs and there are eleven categories, so the weight map is
+> `Map.ofEntries`. Worth recording only because the failure is a compile error with
+> a message that does not mention the limit.
+
+### Phase 8.10 — The broker made visible
+
+- [x] **Redpanda Console** in the compose stack (`redpandadata/console:v2.7.2`),
+      health-checked, on `OW_CONSOLE_PORT` (8090)
+- [x] Added to `scripts/preflight.sh`, so it participates in conflict resolution
+      like the other published ports
+- [x] **External tools** group at the foot of the dashboard sidebar — Grafana,
+      Prometheus, Redpanda Console, API docs
+- [x] `make urls` and preflight both list it
+
+> **Why a container for a UI nobody strictly needs.** Streaming is the one step in
+> this pipeline that otherwise has to be taken on faith: transactions go into a
+> topic, alerts come out of another, and there is nothing to look at in between.
+> The console shows the actual JSON on both topics, the partitions, and the
+> engine's consumer-group lag moving. It is read-only, and — like everything else
+> here — unauthenticated, which is stated rather than implied.
+>
+> **Two URLs for one API, and the bug that nearly shipped.** The sidebar links are
+> built at Vite build time and read by the *browser*, so they need host ports. The
+> dev server's proxy target is resolved *inside* the UI container, so it needs a
+> compose hostname. Reusing `VITE_API_URL` for the Swagger link would have
+> overridden `http://fraud-api:8080` with `http://localhost:8081` and broken every
+> API call in the app. Caught before deploying; the two are now
+> `VITE_API_URL` and `VITE_API_PUBLIC_URL`, each with a comment saying which
+> audience it serves and what breaks if they are confused.
+
+### Phase 8.11 — Repository restructure
+
+The root directory had grown to fifteen entries, five of them Maven modules sitting
+beside `database/`, `observability/`, `postman/` and `quality/`. Nothing was
+misplaced exactly; there was just no answer to "where does a new thing go".
+
+- [x] `services/` — the five Maven modules
+- [x] `infra/` — `database/`, `observability/`
+- [x] `tools/` — `postman/`, `quality/`
+- [x] All moves via `git mv`, so `git log --follow` still works per file
+- [x] `_to_delete/` (29 stale pre-refactor files) and the unused `database/init/`
+      removed
+- [x] `pom.xml`, `Dockerfile`, `docker-compose.yml`, CI, preflight, the smoke test
+      and `verify-dashboards.py` all updated to match
+
+> **Verified end to end, because this is the change class that compiles and then
+> fails to package.** `mvn clean verify` BUILD SUCCESS across all five modules (80
+> tests), all four images rebuilt, nine containers healthy, smoke test 35 of 35,
+> `verify-dashboards.py` 45 of 45.
+>
+> Three faults the verification caught, none of which a compile would have:
+> the parent POM stopped resolving (Maven guesses `../pom.xml`; the modules are now
+> two levels down, so all five needed an explicit `<relativePath>`);
+> `COPY database database` in the Dockerfile — missed on the first pass because the
+> grep I used to find path references required a trailing slash; and the jar-collection
+> loop still globbing `"$m"/target/*.jar` instead of `"services/$m"/...`, which
+> surfaced only because the build's own Boot-jar guard failed loudly rather than
+> producing an image that dies at runtime with "no main manifest attribute".
+
+### Phase 8.12 — Documentation and the demo guide
+
+- [x] `docs/DEMO.md` — a fifteen-minute running order with what to say at each
+      step, a five-minute cut, anticipated questions, and mid-demo recovery
+- [x] README updated for the new layout, the generator, the console and the
+      sidebar links; test count 68 → 80, smoke 20 → 35
+- [x] Architecture document: stale project tree replaced, the never-implemented
+      `/v1` path segment removed (9 places), and a banner naming the README as the
+      as-built authority
+
+> **Two endpoints the README documented did not exist.** Writing the demo guide
+> meant running every command in it, which is how `POST /api/rules/replay` and
+> `GET /api/rules/{id}/stats` were found to be 404s — the real routes are
+> `POST /api/replay` and `GET /api/rules/performance`. Both had been in the README
+> for weeks. Nothing catches a wrong path in prose except executing it, which is
+> the argument for a demo script being made of runnable commands rather than
+> screenshots.
+>
+> **`make urls` had drifted from preflight.** It kept its own copy of the
+> port-to-URL logic and was still printing four URLs after the stack grew a fifth
+> published port, so the Redpanda Console was invisible to the one command that
+> exists to tell you where things are. Preflight gained a `--urls` flag and the
+> Makefile now delegates, so there is one place that knows.
+>
+> The replay demonstration is worth keeping as a number: over the same 21 420
+> transactions, a R50 000 high-value threshold would have fired 235 times and
+> R30 000 would have fired 250 — fifteen more alerts for a 40% cut in the
+> threshold, because most of the value above R30 000 is already above R50 000.
+> That is a more interesting answer than the one a person would guess, which is
+> the case for the endpoint existing.
+
 ### Phase 7 — Observability
 - [x] Actuator and Micrometer on all services
 - [x] Business metrics — latency percentiles, alerts by rule, shadow hits, ZAR flagged

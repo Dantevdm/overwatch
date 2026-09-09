@@ -254,6 +254,20 @@ p { font-size: 14px; line-height: 1.7; color: var(--fg); margin: 0 0 12px; }
     </div>
   </div>
 
+  <div style="margin:0 0 28px;padding:14px 18px;border-left:3px solid var(--muted, #999);
+              background:rgba(128,128,128,.07);border-radius:4px;font-size:13.5px;line-height:1.6">
+    <strong>This is the design document, written before implementation.</strong>
+    It is kept as a record of the intended architecture, and the built system
+    follows it closely — but where the two disagree, the
+    <a href="../../README.md">README</a> describes what was actually built and is
+    the authority. Two known differences: the API ships without a
+    <code>/v1</code> path segment, and <code>/api/stats/trends</code> was folded
+    into <code>/api/stats/dashboard?rangeMinutes=N</code> rather than shipping as a
+    second endpoint. Rule updates are also narrower than drawn here — the routes
+    are <code>PATCH /api/rules/{id}/state</code> and
+    <code>PATCH /api/rules/{id}/weight</code>, not a general rule update.
+  </div>
+
   <!-- 01 — Architecture Overview -->
   <section class="section">
     <div class="section-head">
@@ -613,55 +627,55 @@ CREATE TABLE shadow_rule_hits (
         <tbody>
           <tr>
             <td><span class="badge badge-brand">GET</span></td>
-            <td><code>/api/v1/transactions</code></td>
+            <td><code>/api/transactions</code></td>
             <td>Paginated transaction list</td>
             <td style="font-size:12px;color:var(--muted)">Filters: category, dateRange, channel</td>
           </tr>
           <tr>
             <td><span class="badge badge-brand">GET</span></td>
-            <td><code>/api/v1/transactions/{id}</code></td>
+            <td><code>/api/transactions/{id}</code></td>
             <td>Single transaction + alerts</td>
             <td style="font-size:12px;color:var(--muted)">Includes linked fraud alerts</td>
           </tr>
           <tr>
             <td><span class="badge badge-danger">GET</span></td>
-            <td><code>/api/v1/alerts</code></td>
+            <td><code>/api/alerts</code></td>
             <td>Paginated fraud alerts</td>
             <td style="font-size:12px;color:var(--muted)">Filters: severity, status, ruleType</td>
           </tr>
           <tr>
             <td><span class="badge badge-danger">PATCH</span></td>
-            <td><code>/api/v1/alerts/{id}/status</code></td>
+            <td><code>/api/alerts/{id}/status</code></td>
             <td>Update alert status</td>
             <td style="font-size:12px;color:var(--muted)">REVIEWING, DISMISSED, CONFIRMED</td>
           </tr>
           <tr>
             <td><span class="badge badge-warning">GET</span></td>
-            <td><code>/api/v1/rules</code></td>
+            <td><code>/api/rules</code></td>
             <td>List all fraud rules</td>
             <td style="font-size:12px;color:var(--muted)">Include enabled/disabled</td>
           </tr>
           <tr>
             <td><span class="badge badge-warning">POST</span></td>
-            <td><code>/api/v1/rules</code></td>
+            <td><code>/api/rules</code></td>
             <td>Create a new rule</td>
             <td style="font-size:12px;color:var(--muted)">Engine reloads automatically</td>
           </tr>
           <tr>
             <td><span class="badge badge-warning">PUT</span></td>
-            <td><code>/api/v1/rules/{id}</code></td>
+            <td><code>/api/rules/{id}</code></td>
             <td>Update rule config</td>
             <td style="font-size:12px;color:var(--muted)">Toggle, change params</td>
           </tr>
           <tr>
             <td><span class="badge badge-success">GET</span></td>
-            <td><code>/api/v1/stats/dashboard</code></td>
+            <td><code>/api/stats/dashboard</code></td>
             <td>Dashboard aggregates</td>
             <td style="font-size:12px;color:var(--muted)">Totals, by-severity, by-rule, by-hour</td>
           </tr>
           <tr>
             <td><span class="badge badge-success">GET</span></td>
-            <td><code>/api/v1/stats/trends</code></td>
+            <td><code>/api/stats/trends</code></td>
             <td>Time-series data</td>
             <td style="font-size:12px;color:var(--muted)">Alerts/hour over last 24h</td>
           </tr>
@@ -678,111 +692,27 @@ CREATE TABLE shadow_rule_hits (
     </div>
 
     <pre>overwatch/
+├── services/                    # Every Maven module — the JVM side
+│   ├── common/                  #   Shared domain records, events, JPA entities
+│   ├── rule-engine/             #   The rules and the orchestrator (a library)
+│   ├── transaction-simulator/   #   Service 1 — event generation
+│   ├── fraud-engine/            #   Service 2 — rule evaluation
+│   └── fraud-api/               #   Service 3 — BFF
+├── overwatch-ui/                # React + Vite dashboard
+├── infra/                       # What the services run on, as code
+│   ├── database/migration/      #   Flyway migrations — the schema
+│   └── observability/
+│       ├── prometheus/          #   Scrape configuration
+│       └── grafana/             #   Provisioned datasources and dashboards
+├── tools/
+│   ├── postman/                 #   Collection and environment
+│   └── quality/                 #   PMD ruleset, SpotBugs exclusions
+├── scripts/                     # preflight, smoke test, verification scripts
+├── docs/
+├── Dockerfile                   # One multi-stage build for all three services
 ├── docker-compose.yml
-├── .env
-├── README.md
-│
-├── transaction-simulator/        # Service 1
-│   ├── Dockerfile
-│   ├── pom.xml
-│   └── src/main/java/com/overwatch/simulator/
-│       ├── SimulatorApplication.java
-│       ├── config/
-│       │   └── KafkaProducerConfig.java
-│       ├── model/
-│       │   └── Transaction.java
-│       ├── generator/
-│       │   ├── TransactionGenerator.java
-│       │   ├── MerchantData.java
-│       │   └── CardProfileData.java
-│       └── publisher/
-│           └── TransactionPublisher.java
-│
-├── fraud-engine/                 # Service 2 — the core
-│   ├── Dockerfile
-│   ├── pom.xml
-│   └── src/main/java/com/overwatch/engine/
-│       ├── EngineApplication.java
-│       ├── config/
-│       │   ├── KafkaConsumerConfig.java
-│       │   └── KafkaProducerConfig.java
-│       ├── model/
-│       │   ├── Transaction.java
-│       │   ├── FraudAlert.java
-│       │   └── RuleConfig.java
-│       ├── rule/                  # Strategy pattern
-│       │   ├── FraudRule.java           (interface)
-│       │   ├── RuleEngine.java          (orchestrator)
-│       │   ├── HighValueRule.java
-│       │   ├── VelocityRule.java
-│       │   ├── LateNightRule.java
-│       │   ├── RoundAmountRule.java
-│       │   ├── GeoAnomalyRule.java
-│       │   └── CategoryMismatchRule.java
-│       ├── consumer/
-│       │   └── TransactionConsumer.java
-│       ├── publisher/
-│       │   └── AlertPublisher.java
-│       └── repository/
-│           ├── TransactionRepository.java
-│           ├── FraudAlertRepository.java
-│           └── RuleConfigRepository.java
-│
-├── fraud-api/                    # Service 3 — BFF
-│   ├── Dockerfile
-│   ├── pom.xml
-│   └── src/main/java/com/overwatch/api/
-│       ├── ApiApplication.java
-│       ├── config/
-│       │   └── CorsConfig.java
-│       ├── controller/
-│       │   ├── TransactionController.java
-│       │   ├── AlertController.java
-│       │   ├── RuleController.java
-│       │   └── StatsController.java
-│       ├── dto/
-│       │   ├── DashboardStatsDto.java
-│       │   └── TrendDataDto.java
-│       └── service/
-│           ├── TransactionService.java
-│           ├── AlertService.java
-│           └── StatsService.java
-│
-├── overwatch-ui/                 # Frontend
-│   ├── Dockerfile
-│   ├── package.json
-│   ├── vite.config.js
-│   └── src/
-│       ├── App.jsx
-│       ├── main.jsx
-│       ├── theme/
-│       │   └── tokens.css         # i1 design system tokens
-│       ├── components/
-│       │   ├── Layout.jsx
-│       │   ├── Sidebar.jsx
-│       │   ├── StatTile.jsx
-│       │   ├── AlertBadge.jsx
-│       │   ├── TransactionTable.jsx
-│       │   └── charts/
-│       │       ├── AlertTrendChart.jsx
-│       │       ├── SeverityPieChart.jsx
-│       │       └── CategoryBarChart.jsx
-│       └── pages/
-│           ├── Dashboard.jsx
-│           ├── Transactions.jsx
-│           ├── Alerts.jsx
-│           └── Rules.jsx
-│
-├── grafana/
-│   └── provisioning/
-│       └── dashboards/
-│           └── overwatch.json
-│
-├── prometheus/
-│   └── prometheus.yml
-│
-└── postman/
-    └── Overwatch.postman_collection.json</pre>
+├── Makefile
+└── pom.xml                      # The reactor</pre>
   </section>
 
   <!-- 08 — Docker Compose -->
