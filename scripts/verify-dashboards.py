@@ -32,7 +32,7 @@ import time
 import urllib.parse
 import urllib.request
 
-DASHBOARD_GLOB = "observability/grafana/dashboards/*.json"
+DASHBOARD_GLOB = "infra/observability/grafana/dashboards/*.json"
 
 # Grafana expands these server-side; Prometheus has never heard of them. The
 # substitutions only need to be *valid* and roughly representative — this checks

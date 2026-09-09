@@ -3,6 +3,6 @@
 **/dist/
 .git/
 docs/
-postman/
+tools/postman/
 *.md
 .idea/

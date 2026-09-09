@@ -8,6 +8,10 @@
         <groupId>com.overwatch</groupId>
         <artifactId>overwatch</artifactId>
         <version>1.0.0-SNAPSHOT</version>
+        <!-- Two levels up: the modules live under services/, so Maven's default
+             guess of ../pom.xml would miss the parent and fall back to trying to
+             resolve it from a repository, where it has never been published. -->
+        <relativePath>../../pom.xml</relativePath>
     </parent>
 
     <artifactId>common</artifactId>

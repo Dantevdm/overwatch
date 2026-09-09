@@ -16,11 +16,11 @@ WORKDIR /build
 
 # POMs first: the dependency layer then rebuilds only when a POM changes.
 COPY pom.xml .
-COPY common/pom.xml                common/
-COPY rule-engine/pom.xml           rule-engine/
-COPY transaction-simulator/pom.xml transaction-simulator/
-COPY fraud-engine/pom.xml          fraud-engine/
-COPY fraud-api/pom.xml             fraud-api/
+COPY services/common/pom.xml                services/common/
+COPY services/rule-engine/pom.xml           services/rule-engine/
+COPY services/transaction-simulator/pom.xml services/transaction-simulator/
+COPY services/fraud-engine/pom.xml          services/fraud-engine/
+COPY services/fraud-api/pom.xml             services/fraud-api/
 
 # Retry settings for every Maven invocation here — Central drops handshakes.
 COPY .mvn .mvn
@@ -38,14 +38,14 @@ RUN --mount=type=cache,target=/root/.m2 \
       || echo 'Dependency warm-up incomplete — the package step will fetch the rest.'
 
 # The schema. Copied before the build because both datasource-owning services
-# package it into their own classpath (see database/README.md).
-COPY database database
+# package it into their own classpath (see infra/database/README.md).
+COPY infra/database infra/database
 
-COPY common/src                common/src
-COPY rule-engine/src           rule-engine/src
-COPY transaction-simulator/src transaction-simulator/src
-COPY fraud-engine/src          fraud-engine/src
-COPY fraud-api/src             fraud-api/src
+COPY services/common/src                services/common/src
+COPY services/rule-engine/src           services/rule-engine/src
+COPY services/transaction-simulator/src services/transaction-simulator/src
+COPY services/fraud-engine/src          services/fraud-engine/src
+COPY services/fraud-api/src             services/fraud-api/src
 
 # One reactor build. Tests run in CI, not here —
 # an image build that runs the test suite makes `docker compose up` slow for
@@ -58,7 +58,7 @@ RUN --mount=type=cache,target=/root/.m2 \
 # would otherwise surface at runtime as "no main manifest attribute, in app.jar".
 RUN set -eu; \
     for m in transaction-simulator fraud-engine fraud-api; do \
-      jar=$(ls "$m"/target/*.jar | head -1); \
+      jar=$(ls "services/$m"/target/*.jar | head -1); \
       if ! jar tf "$jar" | grep -q 'org/springframework/boot/loader/'; then \
         echo "BUILD ERROR: $jar is not an executable Spring Boot jar."; \
         echo "The spring-boot-maven-plugin repackage goal did not run for $m."; \

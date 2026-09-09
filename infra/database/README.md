@@ -15,8 +15,11 @@ of that service's own classpath, which Flyway reads without any scanning
 subtlety. One source of truth in the repository, one copy per service jar, and
 no dependency on how a build tool packages a transitive resource.
 
-The copy is done by `maven-resources-plugin` in `fraud-engine/pom.xml` and
-`fraud-api/pom.xml`. Editing a file here changes both services.
+The copy is done by `maven-resources-plugin` in
+`services/fraud-engine/pom.xml` and `services/fraud-api/pom.xml`, both of which
+resolve this directory as `${maven.multiModuleProjectDirectory}/infra/database/migration`
+— an absolute path from the reactor root rather than a relative one, so it
+survives the modules moving. Editing a file here changes both services.
 
 ## Adding a migration
 

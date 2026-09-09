@@ -21,7 +21,7 @@ import glob
 import re
 import sys
 
-ENTITY_GLOB = "common/src/main/java/com/overwatch/common/persistence/*.java"
+ENTITY_GLOB = "services/common/src/main/java/com/overwatch/common/persistence/*.java"
 
 # How Hibernate maps a Java field to a PostgreSQL type, given its annotations.
 def expected_type(java_type: str, ann: dict) -> str | None:

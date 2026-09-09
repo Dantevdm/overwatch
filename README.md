@@ -286,23 +286,44 @@ whose query is broken.
 
 ```
 overwatch/
-├── docs/
-│   ├── architecture/            # Architecture document and dashboard mockup
-│   ├── design-system/           # i1 design system — UI kit and extracted tokens.css
-│   └── planning/                # Project plan, task list, deferred decisions
-├── common/                      # Shared domain records, events, JPA entities
-├── database/migration/          # Flyway migrations — the schema
-├── rule-engine/                 # The rules and the orchestrator (a library)
-├── transaction-simulator/       # Service 1 — event generation
-├── fraud-engine/                # Service 2 — rule evaluation
-├── fraud-api/                   # Service 3 — BFF
+├── services/                    # Every Maven module — the JVM side of the system
+│   ├── common/                  #   Shared domain records, events, JPA entities
+│   ├── rule-engine/             #   The rules and the orchestrator (a library)
+│   ├── transaction-simulator/   #   Service 1 — event generation
+│   ├── fraud-engine/            #   Service 2 — rule evaluation
+│   └── fraud-api/               #   Service 3 — BFF
 ├── overwatch-ui/                # React + Vite dashboard
-├── observability/
-│   ├── prometheus/              # Scrape configuration
-│   └── grafana/                 # Provisioned datasources and dashboards
-├── postman/                     # Collection and environment
-└── docker-compose.yml
+├── infra/                       # What the services run on, as code
+│   ├── database/migration/      #   Flyway migrations — the schema
+│   └── observability/
+│       ├── prometheus/          #   Scrape configuration
+│       └── grafana/             #   Provisioned datasources and dashboards
+├── tools/                       # Developer tooling, not shipped or deployed
+│   ├── postman/                 #   Collection and environment
+│   └── quality/                 #   PMD ruleset, SpotBugs exclusions
+├── scripts/                     # preflight, smoke test, verification scripts
+├── docs/
+│   ├── architecture/            #   Architecture document and dashboard mockup
+│   ├── design-system/           #   i1 design system — UI kit and tokens.css
+│   └── planning/                #   Project plan, task list, deferred decisions
+├── Dockerfile                   # One multi-stage build for all three services
+├── docker-compose.yml
+├── Makefile
+└── pom.xml                      # The reactor
 ```
+
+Each top-level directory answers a different question. `services/` and
+`overwatch-ui/` are the product; `infra/` is what it runs on; `tools/` is what a
+developer uses on it; `scripts/` is what you run; `docs/` is what you read.
+Everything that used to sit loose at the root — five Maven modules, `database/`,
+`observability/`, `postman/`, `quality/` — is now under whichever of those it
+belongs to, so the root lists what the project *is* rather than everything it
+contains.
+
+The moves were made with `git mv`, so `git log --follow` still works on every file.
+One consequence worth knowing if you add a module: each module POM carries an
+explicit `<relativePath>../../pom.xml</relativePath>`, because Maven's default
+guess is `../pom.xml` and the modules are now two levels down.
 
 ---
 
@@ -394,7 +415,7 @@ nobody opens:
 | SpotBugs + find-sec-bugs | Bug patterns plus ~130 security detectors — injection, crypto misuse, unsafe deserialisation |
 | PMD | Cyclomatic and cognitive complexity, dead code, copy-paste detection |
 
-Rulesets in `quality/` are tuned rather than stock. The full PMD quickstart set
+Rulesets in `tools/quality/` are tuned rather than stock. The full PMD quickstart set
 argues with Spring and JPA conventions loudly enough that people stop reading the
 output, and a gate nobody reads is worse than no gate. Every SpotBugs exclusion
 carries its justification inline, so the exclusion file cannot quietly become the
@@ -417,7 +438,7 @@ An offline CVE scan is available if wanted: `mvn dependency-check:check`.
 ## Database schema
 
 The schema is owned by **Flyway**. Migrations live in
-`database/migration` and are versioned, immutable and applied
+`infra/database/migration` and are versioned, immutable and applied
 in order:
 
 | Migration | Contents |
@@ -476,14 +497,14 @@ anyone reading the code.
 
 ## Postman
 
-`postman/` holds a collection and a local environment. The folders are ordered as a
+`tools/postman/` holds a collection and a local environment. The folders are ordered as a
 guided tour: check health, inject a fraud pattern, watch the alert appear,
 disposition it, then use replay to decide a threshold change. The alert id is
 captured automatically by the list request, so nothing needs editing by hand.
 
 ```
-postman/Overwatch.postman_collection.json
-postman/Overwatch-Local.postman_environment.json
+tools/postman/Overwatch.postman_collection.json
+tools/postman/Overwatch-Local.postman_environment.json
 ```
 
 If preflight moved a port, `make urls` prints the values to put in the environment.

@@ -8,15 +8,19 @@
         <groupId>com.overwatch</groupId>
         <artifactId>overwatch</artifactId>
         <version>1.0.0-SNAPSHOT</version>
+        <!-- Two levels up: the modules live under services/, so Maven's default
+             guess of ../pom.xml would miss the parent and fall back to trying to
+             resolve it from a repository, where it has never been published. -->
+        <relativePath>../../pom.xml</relativePath>
     </parent>
 
-    <artifactId>fraud-engine</artifactId>
-    <name>Overwatch :: Fraud Engine</name>
-    <description>Rule evaluation, risk scoring and alert persistence</description>
+    <artifactId>fraud-api</artifactId>
+    <name>Overwatch :: Fraud API</name>
+    <description>REST API over transactions, alerts, rules and statistics</description>
 
 
     <properties>
-        <!-- Wiring — consumer, repositories, processor. Covered by the CI stack job. -->
+        <!-- Wiring — controllers and repositories. Covered by the CI stack job. -->
         <jacoco.line.coverage>0.00</jacoco.line.coverage>
     </properties>
 
@@ -26,21 +30,8 @@
             <artifactId>common</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.overwatch</groupId>
-            <artifactId>rule-engine</artifactId>
-        </dependency>
-        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-        <dependency>
-            <!-- The starter, not the bare spring-kafka library. Spring Boot 4
-                 modularised auto-configuration: the library on the classpath no
-                 longer brings KafkaAutoConfiguration with it, so KafkaTemplate,
-                 @KafkaListener containers and KafkaAdmin are simply never
-                 defined. The same change is why Flyway needs its own starter. -->
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-kafka</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -64,12 +55,23 @@
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-database-postgresql</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+        </dependency>
+        <dependency>
+            <!-- The replay endpoint runs the real rule implementations, not a
+                 reimplementation of them. A what-if answer computed by different
+                 code from the one in production is worse than no answer. -->
+            <groupId>com.overwatch</groupId>
+            <artifactId>rule-engine</artifactId>
+        </dependency>
     </dependencies>
 
     <build>
         <plugins>
             <plugin>
-                <!-- The schema lives in /database/migration, outside any module, so
+                <!-- The schema lives in /infra/database/migration, outside any module, so
                      it lands at the root of this service's own classpath rather
                      than inside a nested dependency jar — the one place Flyway's
                      classpath scanning is reliably able to read it. -->
@@ -84,7 +86,7 @@
                             <outputDirectory>${project.build.outputDirectory}/db/migration</outputDirectory>
                             <resources>
                                 <resource>
-                                    <directory>${maven.multiModuleProjectDirectory}/database/migration</directory>
+                                    <directory>${maven.multiModuleProjectDirectory}/infra/database/migration</directory>
                                     <filtering>false</filtering>
                                 </resource>
                             </resources>

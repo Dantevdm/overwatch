@@ -20,11 +20,11 @@
     <description>Fraud rule engine service</description>
 
     <modules>
-        <module>common</module>
-        <module>rule-engine</module>
-        <module>transaction-simulator</module>
-        <module>fraud-engine</module>
-        <module>fraud-api</module>
+        <module>services/common</module>
+        <module>services/rule-engine</module>
+        <module>services/transaction-simulator</module>
+        <module>services/fraud-engine</module>
+        <module>services/fraud-api</module>
     </modules>
 
     <properties>
@@ -171,7 +171,7 @@
                     <threshold>Medium</threshold>
                     <failOnError>true</failOnError>
                     <includeTests>false</includeTests>
-                    <excludeFilterFile>${maven.multiModuleProjectDirectory}/quality/spotbugs-exclude.xml</excludeFilterFile>
+                    <excludeFilterFile>${maven.multiModuleProjectDirectory}/tools/quality/spotbugs-exclude.xml</excludeFilterFile>
                     <plugins>
                         <plugin>
                             <groupId>com.h3xstream.findsecbugs</groupId>
@@ -208,7 +208,7 @@
                 </dependencies>
                 <configuration>
                     <rulesets>
-                        <ruleset>${maven.multiModuleProjectDirectory}/quality/pmd-ruleset.xml</ruleset>
+                        <ruleset>${maven.multiModuleProjectDirectory}/tools/quality/pmd-ruleset.xml</ruleset>
                     </rulesets>
                     <failOnViolation>true</failOnViolation>
                     <printFailingErrors>true</printFailingErrors>
