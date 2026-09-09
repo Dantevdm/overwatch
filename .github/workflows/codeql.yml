@@ -1,0 +1,51 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, Monday 04:00 UTC (06:00 SAST). Catches newly published advisories
+    # against code that has not changed — the case a push-triggered scan misses.
+    - cron: '0 4 * * 1'
+
+jobs:
+  analyze:
+    name: Analyze Java
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      security-events: write   # required to upload results to the Security tab
+      packages: read
+      actions: read
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: java-kotlin
+          # security-extended adds lower-severity security queries; the quality
+          # pack adds correctness checks. Worth the runtime at this size.
+          queries: security-extended,security-and-quality
+
+      # Build explicitly rather than via autobuild: this is a multi-module Maven
+      # project and tests are irrelevant to the scan.
+      - name: Build
+        run: mvn -B --no-transfer-progress clean compile -DskipTests
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:java-kotlin

@@ -1,5 +1,8 @@
 # Overwatch
 
+[![CI](https://github.com/Dantevdm/overwatch/actions/workflows/ci.yml/badge.svg)](https://github.com/Dantevdm/overwatch/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/Dantevdm/overwatch/actions/workflows/codeql.yml/badge.svg)](https://github.com/Dantevdm/overwatch/actions/workflows/codeql.yml)
+
 A fraud rule engine service. Overwatch ingests a stream of categorized card
 transactions, evaluates each one against a set of configurable fraud rules, scores
 the result, persists any alerts, and exposes everything through a REST API and a
@@ -234,6 +237,37 @@ overwatch/
 ├── postman/                     # Collection and environment
 └── docker-compose.yml
 ```
+
+---
+
+## Quality gates
+
+`mvn verify` is the gate, and it fails the build rather than producing a report
+nobody opens:
+
+| Tool | What it enforces |
+|---|---|
+| JaCoCo | Line-coverage floor, checked at `verify` |
+| SpotBugs + find-sec-bugs | Bug patterns plus ~130 security detectors — injection, crypto misuse, unsafe deserialisation |
+| PMD | Cyclomatic and cognitive complexity, dead code, copy-paste detection |
+
+Rulesets in `quality/` are tuned rather than stock. The full PMD quickstart set
+argues with Spring and JPA conventions loudly enough that people stop reading the
+output, and a gate nobody reads is worse than no gate. Every SpotBugs exclusion
+carries its justification inline, so the exclusion file cannot quietly become the
+place problems go to hide.
+
+CI runs three jobs on every push: the quality gate above, the Flyway migrations
+against a real PostgreSQL with assertions on the resulting schema, and a full
+`docker compose up` followed by the smoke test. That last job is the one that
+catches packaging and wiring faults no unit test will.
+
+CodeQL scans on every push and weekly — the schedule matters because it catches
+newly published advisories against code that has not changed. Dependabot handles
+dependency updates, grouped so the Spring ecosystem arrives as one reviewable pull
+request rather than a dozen.
+
+An offline CVE scan is available if wanted: `mvn dependency-check:check`.
 
 ---
 

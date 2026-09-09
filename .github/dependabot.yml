@@ -1,0 +1,52 @@
+# Dependency updates and vulnerability alerts.
+#
+# This covers the CVE-scanning role OWASP Dependency-Check would otherwise play
+# in the build. Dependency-Check needs the full NVD dataset, which makes it slow
+# and rate-limited in CI; Dependabot is native, free, and opens a pull request
+# with the fix rather than only reporting a number.
+#
+# The plugin is still configured in the parent POM for an offline scan:
+#   mvn dependency-check:check
+
+version: 2
+updates:
+
+  - package-ecosystem: maven
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:00"
+    open-pull-requests-limit: 5
+    labels: [dependencies, java]
+    groups:
+      # One PR for the Spring ecosystem rather than a dozen — these versions
+      # move together and are close to meaningless reviewed apart.
+      spring:
+        patterns: ['org.springframework*', 'org.springdoc*']
+      quality-tooling:
+        patterns: ['*jacoco*', '*spotbugs*', '*pmd*', '*findsecbugs*']
+
+  - package-ecosystem: npm
+    directory: /overwatch-ui
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:00"
+    open-pull-requests-limit: 5
+    labels: [dependencies, javascript]
+    groups:
+      react:
+        patterns: ['react', 'react-dom', 'react-router*']
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    labels: [dependencies, docker]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels: [dependencies, ci]

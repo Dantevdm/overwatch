@@ -1,0 +1,169 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# A newer push supersedes an in-flight run on the same branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  JAVA_VERSION: '25'
+
+jobs:
+
+  # ---------------------------------------------------------------------------
+  # Compile, test, and enforce the quality gate.
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build & quality gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      # `verify` is deliberately the entire gate: tests, the JaCoCo coverage
+      # floor, SpotBugs with find-sec-bugs, and PMD all bind to that phase. If
+      # this passes, the identical command passes on a developer machine.
+      - name: mvn verify
+        run: mvn -B --no-transfer-progress clean verify
+
+      - name: Publish test results
+        uses: mikepenz/action-junit-report@v4
+        if: always()
+        with:
+          report_paths: '**/target/surefire-reports/TEST-*.xml'
+          include_passed: true
+          detailed_summary: true
+
+      - name: Upload coverage and analysis reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: quality-reports
+          path: |
+            **/target/site/jacoco/
+            **/target/spotbugsXml.xml
+            **/target/pmd.xml
+          retention-days: 14
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          echo "### Coverage" >> "$GITHUB_STEP_SUMMARY"
+          for csv in $(find . -name jacoco.csv); do
+            module=$(echo "$csv" | cut -d/ -f2)
+            # JaCoCo CSV: column 8 is LINE_MISSED, 9 is LINE_COVERED. Columns
+            # 4 and 5 are instructions — a different, always more flattering
+            # number, and not the one the coverage gate enforces.
+            awk -F, -v m="$module" '
+              NR > 1 { missed += $8; covered += $9 }
+              END {
+                if (missed + covered > 0)
+                  printf "- **%s**: %.1f%% lines (%d/%d)\n", m,
+                         covered * 100 / (missed + covered), covered, missed + covered
+              }' "$csv" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+  # ---------------------------------------------------------------------------
+  # Apply the Flyway migrations to a real PostgreSQL and assert the outcome.
+  # Catches a broken migration before it reaches anyone.
+  # ---------------------------------------------------------------------------
+  migrations:
+    name: Database migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: overwatch
+          POSTGRES_USER: overwatch
+          POSTGRES_PASSWORD: overwatch
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U overwatch -d overwatch"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply migrations in order
+        env:
+          PGPASSWORD: overwatch
+        run: |
+          set -euo pipefail
+          for f in common/src/main/resources/db/migration/V*.sql; do
+            echo "==> $f"
+            psql -h localhost -U overwatch -d overwatch -v ON_ERROR_STOP=1 -q -f "$f"
+          done
+
+      - name: Assert the schema is what we expect
+        env:
+          PGPASSWORD: overwatch
+        run: |
+          set -euo pipefail
+          q() { psql -h localhost -U overwatch -d overwatch -t -A -c "$1"; }
+
+          tables=$(q "SELECT COUNT(*) FROM pg_tables WHERE schemaname='public';")
+          rules=$(q  "SELECT COUNT(*) FROM fraud_rules;")
+          shadow=$(q "SELECT COUNT(*) FROM fraud_rules WHERE state='SHADOW';")
+
+          echo "tables=$tables rules=$rules shadow=$shadow"
+          [ "$tables" -eq 5 ] || { echo "expected 5 tables, got $tables"; exit 1; }
+          [ "$rules"  -ge 7 ] || { echo "expected >=7 seeded rules, got $rules"; exit 1; }
+          [ "$shadow" -ge 1 ] || { echo "expected a rule shipped in SHADOW"; exit 1; }
+
+          # Constraints must actually reject bad data. A CHECK that never fires
+          # is worse than no CHECK, because it reads as protection.
+          if psql -h localhost -U overwatch -d overwatch -q -c \
+             "INSERT INTO fraud_rules (rule_type,name,weight) VALUES ('X','over',1.5);" 2>/dev/null; then
+            echo "weight constraint did not reject 1.5"; exit 1
+          fi
+          echo "Schema and constraints verified."
+
+  # ---------------------------------------------------------------------------
+  # Build the images and run the whole stack, then smoke-test it. This is the
+  # job that catches packaging and wiring faults a unit test never will.
+  # ---------------------------------------------------------------------------
+  stack:
+    name: Docker stack
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [build]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build images
+        run: docker compose build
+
+      - name: Start the stack
+        run: docker compose up -d
+
+      - name: Smoke test
+        run: ./scripts/smoke-test.sh
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs --tail=200
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

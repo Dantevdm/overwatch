@@ -176,6 +176,16 @@ adding one class that implements `FraudRule` — no schema migration.
 - [ ] Prometheus scrape configuration
 - [ ] Pre-provisioned Grafana dashboards
 
+### Phase 7.5 — Quality & CI
+- [x] JaCoCo coverage gate bound to `verify`
+- [x] SpotBugs + find-sec-bugs, tuned exclusions with justifications
+- [x] PMD ruleset — complexity, dead code, CPD
+- [x] Domain unit tests, including shadow-score isolation
+- [x] GitHub Actions: build/quality, migrations against real Postgres, full stack + smoke test
+- [x] CodeQL on push and weekly
+- [x] Dependabot for Maven, npm, Docker and Actions
+- [ ] First green CI run
+
 ### Phase 8 — Delivery
 - [ ] Postman collection with an environment
 - [ ] README with a genuine one-command quickstart
@@ -204,6 +214,16 @@ source of truth; Flyway's schema-history lock makes concurrent startup safe.
 Hibernate stays on `ddl-auto: validate`, so entity/migration drift fails fast at
 startup instead of corrupting data quietly. The Postgres entrypoint init-script
 mount was removed as redundant.
+
+**Build-integrated quality gates over a SonarQube server** (2026-09-09).
+SonarQube Community needs 4GB of RAM and its own database, which roughly doubles
+the stack's footprint and works against the one-command startup the project is
+built around. JaCoCo, SpotBugs with find-sec-bugs and PMD run inside `mvn verify`
+and fail the build, which is a stronger signal than a dashboard someone ran once:
+enforced, reproducible, and committed to the repository. CodeQL and Dependabot
+cover security scanning and dependency CVEs natively on GitHub at no
+infrastructure cost. SonarQube Cloud remains an easy addition if the repository
+is made public.
 
 ---
 
