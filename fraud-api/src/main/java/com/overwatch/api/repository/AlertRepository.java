@@ -15,14 +15,18 @@ import java.util.UUID;
 public interface AlertRepository extends JpaRepository<FraudAlertEntity, UUID> {
 
     /**
-     * Filtered alert list. Null parameters mean "no filter", which keeps this to
-     * one query instead of a Specification tree for four optional filters.
+     * Filtered alert list. A null string parameter means "no filter", which keeps
+     * this to one query instead of a Specification tree for four optional filters.
+     *
+     * <p>{@code since} is deliberately not nullable — see
+     * {@link TransactionReadRepository#search} for why a nullable timestamp
+     * parameter cannot work here. "No lower bound" is {@link Instant#EPOCH}.
      */
     @Query("""
             SELECT a FROM FraudAlertEntity a
             WHERE (:severity IS NULL OR a.severity = :severity)
               AND (:status   IS NULL OR a.status   = :status)
-              AND (:since    IS NULL OR a.createdAt >= :since)
+              AND a.createdAt >= :since
             ORDER BY a.createdAt DESC
             """)
     Page<FraudAlertEntity> search(@Param("severity") String severity,
@@ -49,27 +53,49 @@ public interface AlertRepository extends JpaRepository<FraudAlertEntity, UUID> {
     Double averageRiskScore();
 
     /**
-     * Alerts per hour, split by severity, for the dashboard's severity trend.
+     * Alerts per bucket, split by severity, for the dashboard's severity trend.
      *
      * <p>Returned long rather than pivoted in SQL: a crosstab would need the four
      * severity names baked into the statement, and severities are an enum the
      * application already knows. Pivoting in {@code StatsService} keeps the query
      * indifferent to how many severities exist.
+     *
+     * <p>Bucketed with {@code date_bin} rather than {@code date_trunc} because the
+     * dashboard's window is selectable down to five minutes, and {@code date_trunc}
+     * only understands fixed calendar units — an hourly bucket over a five-minute
+     * window is a single bar. {@code date_bin} takes an arbitrary width, so one
+     * query serves every range.
+     *
+     * <p>The width arrives as a number cast to {@code double precision} and is
+     * turned into an interval by {@code make_interval}, rather than being
+     * interpolated as text. That keeps the parameter explicitly typed — the same
+     * discipline {@link TransactionReadRepository#search} documents at length.
+     *
+     * <p>Binned from the Unix epoch so bucket boundaries are absolute rather than
+     * relative to when the query ran. Two calls a second apart therefore return
+     * the same buckets, and {@code StatsService} can compute the identical
+     * boundaries in Java when it fills the quiet ones with zeros.
      */
     @Query(value = """
-            SELECT date_trunc('hour', created_at) AS bucket, severity, COUNT(*)
+            SELECT date_bin(make_interval(0, 0, 0, 0, 0, 0, CAST(:bucketSeconds AS double precision)),
+                            created_at, TIMESTAMPTZ 'epoch') AS bucket,
+                   severity, COUNT(*)
             FROM fraud_alerts
             WHERE created_at >= :since
             GROUP BY bucket, severity ORDER BY bucket
             """, nativeQuery = true)
-    List<Object[]> hourlyCountsBySeverity(@Param("since") Instant since);
+    List<Object[]> bucketedCountsBySeverity(@Param("since") Instant since,
+                                            @Param("bucketSeconds") long bucketSeconds);
 
-    /** Alerts per hour for the dashboard's time series. */
+    /** Alerts per bucket for the dashboard's time series. See above on bucketing. */
     @Query(value = """
-            SELECT date_trunc('hour', created_at) AS bucket, COUNT(*)
+            SELECT date_bin(make_interval(0, 0, 0, 0, 0, 0, CAST(:bucketSeconds AS double precision)),
+                            created_at, TIMESTAMPTZ 'epoch') AS bucket,
+                   COUNT(*)
             FROM fraud_alerts
             WHERE created_at >= :since
             GROUP BY bucket ORDER BY bucket
             """, nativeQuery = true)
-    List<Object[]> hourlyCounts(@Param("since") Instant since);
+    List<Object[]> bucketedCounts(@Param("since") Instant since,
+                                  @Param("bucketSeconds") long bucketSeconds);
 }

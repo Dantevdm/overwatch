@@ -37,7 +37,10 @@ public class TransactionController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "25") int size) {
 
-        Instant since = hours > 0 ? Instant.now().minus(hours, ChronoUnit.HOURS) : null;
+        // EPOCH rather than null for "no window": the query compares against this
+        // unconditionally, because a nullable timestamp parameter is one Postgres
+        // cannot infer a type for. See TransactionReadRepository#search.
+        Instant since = hours > 0 ? Instant.now().minus(hours, ChronoUnit.HOURS) : Instant.EPOCH;
         Page<TransactionEntity> found = transactions.search(
                 blankToNull(cardId), blankToNull(category), since,
                 PageRequest.of(Math.max(0, page), Math.min(Math.max(1, size), 200)));
