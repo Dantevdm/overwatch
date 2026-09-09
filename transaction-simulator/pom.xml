@@ -28,4 +28,18 @@
             <artifactId>spring-kafka</artifactId>
         </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Produces the executable fat jar. spring-boot-starter-parent only
+                 declares this plugin in pluginManagement, so an executable module
+                 must opt in explicitly; without it Maven emits a plain library jar
+                 with no Main-Class and the container dies with
+                 "no main manifest attribute". -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
 </project>

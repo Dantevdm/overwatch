@@ -198,7 +198,8 @@ overwatch/
 │   ├── architecture/            # Architecture document and dashboard mockup
 │   ├── design-system/           # i1 design system — UI kit and extracted tokens.css
 │   └── planning/                # Project plan, task list, deferred decisions
-├── common/                      # Shared domain records and events
+├── common/                      # Shared domain records, events
+│   └── src/main/resources/db/migration/   # Flyway migrations — the schema
 ├── transaction-simulator/       # Service 1 — event generation
 ├── fraud-engine/                # Service 2 — rule evaluation
 ├── fraud-api/                   # Service 3 — BFF
@@ -212,6 +213,37 @@ overwatch/
 
 ---
 
+## Database schema
+
+The schema is owned by **Flyway**. Migrations live in
+`common/src/main/resources/db/migration` and are versioned, immutable and applied
+in order:
+
+| Migration | Contents |
+|---|---|
+| `V1__baseline_schema.sql` | `transactions`, `fraud_rules`, `fraud_alerts`, `alert_rule_hits`, `shadow_rule_hits` |
+| `V2__seed_fraud_rules.sql` | The default rule set, tuned for ZAR |
+
+Both services that own a datasource run Flyway against the same migrations, which
+is safe: Flyway locks its schema-history table, so whichever service starts first
+applies the migrations and the other waits and finds nothing to do.
+
+Hibernate is configured `ddl-auto: validate`. It never creates or alters anything —
+it only asserts that the entities match what Flyway built. If the two drift, the
+service fails to start rather than quietly writing to the wrong shape.
+
+Two design points worth naming. `alert_rule_hits` records *every* rule that
+contributed to an alert rather than only the strongest, because three weak hits and
+one strong hit can reach the same score while meaning very different things.
+And `shadow_rule_hits` exists because a shadow rule fires without raising an alert,
+so its hits have no alert row to attach to — that table is what makes "what would
+this rule have caught last week?" answerable before the rule ever goes live.
+
+To add a rule type you add a class and, if it needs new configuration, nothing at
+all: rule parameters are JSONB.
+
+---
+
 ## Tech stack
 
 | Choice | Why |
@@ -219,6 +251,7 @@ overwatch/
 | Java 25 (LTS) + Spring Boot 4.1 | Records and pattern matching carry the domain model; virtual threads suit the engine's per-transaction concurrency. Both are current LTS/supported lines rather than trailing ones. |
 | Redpanda | Kafka API compatible, single binary, no ZooKeeper. Same code, a fraction of the container footprint. |
 | PostgreSQL 16 | JSONB makes rule parameters schemaless without giving up relational integrity for everything else. |
+| Flyway | Schema is versioned and applied identically on a fresh volume, an existing one, and in CI. Hibernate runs `ddl-auto: validate`, so a drift between entities and migrations fails at startup instead of silently corrupting data. |
 | React 18 + Vite | Fast dev loop, no framework overhead for what is a dashboard. |
 | Prometheus + Grafana | The default pairing for Micrometer, and provisioning-as-code means no manual setup. |
 

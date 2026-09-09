@@ -23,10 +23,9 @@ services:
     ports:
       - "${OW_PG_PORT:-5432}:5432"
     volumes:
+      # Schema is owned by Flyway, not by entrypoint init scripts — migrations
+      # then run identically on a fresh volume, an existing one, and in CI.
       - pgdata:/var/lib/postgresql/data
-      # Anything in this directory runs on first boot of an empty volume.
-      # Phase 2 drops the schema and seed data here.
-      - ./database/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U overwatch -d overwatch"]
       interval: 5s

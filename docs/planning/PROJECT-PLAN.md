@@ -132,9 +132,18 @@ adding one class that implements `FraudRule` — no schema migration.
 > Maven Central; the build environment used here has neither.
 
 ### Phase 2 — Data layer
-- [ ] Schema migration — transactions, fraud_rules, fraud_alerts
+- [x] Flyway wired into both datasource-owning services
+- [x] `V1__baseline_schema.sql` — transactions, fraud_rules, fraud_alerts, alert_rule_hits, shadow_rule_hits
+- [x] `V2__seed_fraud_rules.sql` — default ZAR-tuned rule set, one shipped in SHADOW
+- [x] Indexes for the velocity lookup and the dashboard's time-ordered queries
 - [ ] JPA entities and repositories
-- [ ] Seed data — SA merchants, cards, default rule set
+- [ ] SA merchant and card reference data (moves with the simulator, Phase 4)
+
+> **Verified.** Both migrations were applied to a real PostgreSQL 16 instance:
+> 5 tables, 20 indexes, 7 seeded rules. 11 constraint assertions passed (amount,
+> channel, weight bounds, rule state, name uniqueness, severity, foreign keys),
+> cascade delete was confirmed to clean up alerts, hits and shadow hits, and the
+> velocity query was checked against 60,000 rows — Index Only Scan, 0.027 ms.
 
 ### Phase 3 — Fraud engine
 - [ ] `FraudRule` interface and the six rule implementations
@@ -187,6 +196,15 @@ application classes and some YAML, no business logic yet), and because shipping 
 supported line is easier to defend than shipping on a branch that stopped receiving
 open-source releases three months ago. `springdoc-openapi` moves to 3.1.1 to match.
 
+**Flyway owns the schema** (2026-09-09). Chosen over `schema.sql`, closing D5.
+Migrations are versioned and immutable, apply identically on a fresh volume, an
+existing one and in CI, and give a real upgrade path rather than a recreate-only
+one. They live in the `common` module so both datasource-owning services apply one
+source of truth; Flyway's schema-history lock makes concurrent startup safe.
+Hibernate stays on `ddl-auto: validate`, so entity/migration drift fails fast at
+startup instead of corrupting data quietly. The Postgres entrypoint init-script
+mount was removed as redundant.
+
 ---
 
 ## Deferred decisions
@@ -200,6 +218,5 @@ becomes an accident.
 | D2 | Authentication / authorisation | Deferred | Out of scope for the brief. The BFF is the natural seam — note it in the README as a known gap rather than half-implementing it. |
 | D3 | Risk score weighting model | Deferred | Starting with hand-set weights per rule. A learned model is interesting but unverifiable in the time available. |
 | D4 | Redpanda Console in the compose stack | Deferred | Useful for demonstrating the event stream, but another container. Add only if the stack stays light. |
-| D5 | Flyway vs `schema.sql` | Deferred | `schema.sql` plus `data.sql` is enough for a single-version demo. Flyway if migrations become plural. |
 | D6 | Multi-currency support | Deferred | Everything is ZAR. The `currency` column exists so this is additive, not a rewrite. |
 | D7 | Alert disposition workflow | Deferred | Alerts have a status field. Whether analysts can transition it from the UI depends on remaining time. |

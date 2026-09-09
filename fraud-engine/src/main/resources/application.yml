@@ -5,6 +5,16 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/overwatch}
     username: ${DB_USER:overwatch}
     password: ${DB_PASSWORD:overwatch}
+  flyway:
+    enabled: true
+    # Migrations ship in the common module, so both services that own a
+    # datasource apply the same schema from one source of truth. Concurrent
+    # startup is safe: Flyway takes a lock on its schema-history table, so
+    # whichever service arrives first migrates and the other waits, then finds
+    # nothing to do.
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+    validate-on-migrate: true
   jpa:
     hibernate:
       ddl-auto: validate
