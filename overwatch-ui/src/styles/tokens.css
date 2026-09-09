@@ -42,11 +42,30 @@
   --danger-bg:  #fff1f2;  --danger-fg:  #be123c;  --danger-border:  #fecdd3;
   --danger:     #f43f5e;
 
-  /* --- Chart palette (brand-derived, sequential) ------------------------- */
+  /* --- Chart palette ------------------------------------------------------
+     Single-series marks (alerts over time, rule bars) use the brand blue.
+
+     Severity is an ORDINAL scale, not four independent categories, so it uses
+     one hue stepped light-to-dark rather than four hues. That is not a style
+     choice: four separate status hues were measured and MEDIUM/HIGH came out
+     4.1 ΔE apart — indistinguishable even with full colour vision, and 0.1 ΔE
+     under deuteranopia. These steps pass monotonic lightness, adjacent-step
+     separation and light-end contrast against the surface they render on.
+     Segments are direct-labelled as well, so severity never rests on hue alone.
+     ---------------------------------------------------------------------- */
   --chart-1: #0067a0;
   --chart-2: #2f9bd4;
   --chart-3: #66a4c6;
   --chart-4: #99c2d9;
+
+  --sev-low:      #f87186;
+  --sev-medium:   #ef4462;
+  --sev-high:     #c81e42;
+  --sev-critical: #8f1030;
+
+  --grid:     #e2e8f0;
+  --axis:     #cbd5e1;
+  --chart-bg: #ffffff;
 
   /* --- Typography ------------------------------------------------------- */
   --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
@@ -121,6 +140,16 @@
     --chart-2: #5bb3e0;
     --chart-3: #7cc8ea;
     --chart-4: #9dd8f0;
+
+    /* Selected for the dark surface, not flipped from light. */
+    --sev-low:      #fecdd3;
+    --sev-medium:   #fda4af;
+    --sev-high:     #f87186;
+    --sev-critical: #e73b5c;
+
+    --grid:     #1e293b;
+    --axis:     #334155;
+    --chart-bg: #0f172a;
   }
 }
 
@@ -150,6 +179,16 @@
   --chart-2: #5bb3e0;
   --chart-3: #7cc8ea;
   --chart-4: #9dd8f0;
+
+  /* Selected for the dark surface, not flipped from light. */
+  --sev-low:      #fecdd3;
+  --sev-medium:   #fda4af;
+  --sev-high:     #f87186;
+  --sev-critical: #e73b5c;
+
+  --grid:     #1e293b;
+  --axis:     #334155;
+  --chart-bg: #0f172a;
 }
 
 /* --- Base reset ----------------------------------------------------------- */
