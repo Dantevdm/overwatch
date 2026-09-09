@@ -1,6 +1,7 @@
 package com.overwatch.simulator.data;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Reference data for the South African card landscape.
@@ -14,7 +15,36 @@ public final class SouthAfricanData {
     private SouthAfricanData() {
     }
 
-    /** Everyday spend. Weighted by how often each category actually appears. */
+    /**
+     * How often each category should appear in ordinary traffic, as relative
+     * weights. They do not need to sum to anything in particular.
+     *
+     * <p>This exists because the obvious approach does not work. Picking a
+     * merchant uniformly from {@link #MERCHANTS} makes a category's share equal
+     * to <em>the number of merchants that happen to be listed under it</em>,
+     * divided by the total — so groceries came out at exactly 6/36 and fuel at
+     * 4/36, and the whole mix was an accident of how many shop names were typed
+     * in rather than a statement about how people spend. Live traffic showed the
+     * fingerprint clearly: categories clustered into flat bands at 11.1%, 8.3%
+     * and 5.6%, which are just 4/36, 3/36 and 2/36.
+     *
+     * <p>Weighting the category first and the merchant second decouples the two,
+     * so adding a shop no longer silently reweights the economy.
+     */
+    public static final Map<String, Integer> CATEGORY_WEIGHTS = Map.ofEntries(
+            Map.entry("groceries", 22),    // the anchor of everyday card spend
+            Map.entry("fuel", 14),
+            Map.entry("restaurant", 11),
+            Map.entry("retail", 11),
+            Map.entry("ecommerce", 9),
+            Map.entry("cash", 8),          // ATM withdrawals, still common here
+            Map.entry("telecoms", 6),      // airtime and data, many small purchases
+            Map.entry("transport", 6),
+            Map.entry("pharmacy", 5),
+            Map.entry("utilities", 5),
+            Map.entry("liquor", 3));
+
+    /** Everyday spend, grouped by category and weighted by {@link #CATEGORY_WEIGHTS}. */
     public static final List<Merchant> MERCHANTS = List.of(
             // Groceries — the bulk of ordinary card traffic
             Merchant.of("Checkers Brackenfell", "groceries", 120, 2400),

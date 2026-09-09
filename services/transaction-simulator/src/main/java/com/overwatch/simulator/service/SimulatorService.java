@@ -12,6 +12,9 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
@@ -32,6 +35,7 @@ public class SimulatorService {
 
     private static final Logger log = LoggerFactory.getLogger(SimulatorService.class);
     private static final long TICK_MS = 1000;
+    private static final ZoneId SAST = ZoneId.of("Africa/Johannesburg");
 
     private final KafkaTemplate<String, Object> kafka;
     private final TransactionGenerator generator;
@@ -54,17 +58,43 @@ public class SimulatorService {
         this.fraudRate = properties.fraudInjectionRate();
 
         meters.gauge("simulator.rate", ratePerSecond);
+        // The time-of-day multiplier, exposed so the shape of the day is a
+        // metric rather than something you have to infer from throughput.
+        meters.gauge("simulator.diurnal.weight", this,
+                s -> diurnalWeight(ZonedDateTime.now(SAST)));
         log.info("Simulator initialised — {} txn/s, {}% fraud injection, {} cards, running={}",
                 ratePerSecond.get(), Math.round(fraudRate * 100),
                 properties.cardPoolSize(), running.get());
     }
+
+    /**
+     * Relative traffic volume by hour of the day, SAST, 00:00 first.
+     *
+     * <p>Card spend has a shape: nothing overnight, a commute-and-coffee rise from
+     * six, a lunch peak, a second and larger peak as people shop on the way home,
+     * then a decline through the evening. Without it the throughput chart is a
+     * perfectly straight line — measured at 28.0 tx/s with a standard deviation of
+     * 0.01 over forty minutes, which is not a plausible reading of anything.
+     *
+     * <p>Interpolated between hours rather than stepped, because twenty-four flat
+     * steps is just a coarser straight line.
+     */
+    private static final double[] HOURLY_SHAPE = {
+            0.12, 0.07, 0.05, 0.05, 0.07, 0.15,   // 00:00–05:00, the trough
+            0.40, 0.85, 1.05, 1.10, 1.15, 1.30,   // 06:00–11:00, morning build
+            1.65, 1.55, 1.25, 1.20, 1.35, 1.75,   // 12:00–17:00, lunch and commute
+            1.80, 1.55, 1.15, 0.80, 0.45, 0.22};  // 18:00–23:00, evening decline
+
+    /** Mean of the curve, so the configured rate is a daily average, not a peak. */
+    private static final double SHAPE_MEAN = Arrays.stream(HOURLY_SHAPE).average().orElse(1);
 
     @Scheduled(fixedRate = TICK_MS)
     public void tick() {
         if (!running.get()) {
             return;
         }
-        int budget = ratePerSecond.get();
+        double expected = ratePerSecond.get() * diurnalWeight(ZonedDateTime.now(SAST));
+        int budget = samplePoisson(expected);
         for (int i = 0; i < budget; i++) {
             if (ThreadLocalRandom.current().nextDouble() < fraudRate) {
                 // A burst counts as one draw but publishes several transactions;
@@ -74,6 +104,51 @@ public class SimulatorService {
                 emit(List.of(generator.normal()), false);
             }
         }
+    }
+
+    /**
+     * How busy this moment of the day is, relative to the daily average.
+     *
+     * <p>Normalised by the mean of the curve, so the configured rate stays the
+     * <em>average</em> over a day rather than becoming a peak. Setting 20/s means
+     * roughly 20/s averaged across 24 hours: about 36/s at the evening peak and
+     * about 1/s at four in the morning.
+     */
+    static double diurnalWeight(ZonedDateTime when) {
+        int hour = when.getHour();
+        // Fraction of the way to the next hour, so the curve slides rather than
+        // stepping at the top of each hour.
+        double progress = (when.getMinute() * 60 + when.getSecond()) / 3600.0;
+        double from = HOURLY_SHAPE[hour];
+        double to = HOURLY_SHAPE[(hour + 1) % HOURLY_SHAPE.length];
+        return (from + (to - from) * progress) / SHAPE_MEAN;
+    }
+
+    /**
+     * A Poisson draw around the expected count for this second.
+     *
+     * <p>Emitting exactly N transactions every tick is what made the throughput
+     * chart a ruler. Arrivals that are independent of one another are Poisson
+     * distributed — which is not a decoration but the actual model for
+     * transactions hitting an acquirer — so the count jitters around the mean the
+     * way a real feed does, and bursts and lulls appear without being scripted.
+     *
+     * <p>Knuth's method: multiply uniforms until the product falls below e^-λ.
+     * Fine at these rates; it degrades above λ≈700 where e^-λ underflows, which
+     * would need a rate three orders of magnitude beyond anything this demo runs.
+     */
+    private static int samplePoisson(double lambda) {
+        if (lambda <= 0) {
+            return 0;
+        }
+        double limit = Math.exp(-lambda);
+        double product = 1.0;
+        int count = 0;
+        do {
+            count++;
+            product *= ThreadLocalRandom.current().nextDouble();
+        } while (product > limit);
+        return count - 1;
     }
 
     /** Publish a specific pattern immediately, for demonstrations. */

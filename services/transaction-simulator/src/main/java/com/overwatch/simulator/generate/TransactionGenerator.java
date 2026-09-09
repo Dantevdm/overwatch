@@ -7,6 +7,7 @@ import com.overwatch.simulator.data.SouthAfricanData;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -16,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Produces realistic South African card transactions, and — on demand — ones
@@ -33,20 +35,53 @@ public class TransactionGenerator {
     private final List<String> cardPool;
     private final Random random;
 
+    /**
+     * The clock every timestamp comes from, injectable so tests are not at the
+     * mercy of what time they happen to run.
+     */
+    private final Clock clock;
+
+    /** Merchants indexed by category, so a category can be chosen first. */
+    private final Map<String, List<Merchant>> byCategory;
+
+    /** Categories in a fixed order, with the running weight total alongside. */
+    private final List<String> categories;
+    private final int[] cumulativeWeights;
+    private final int totalWeight;
+
     public TransactionGenerator(int cardPoolSize, Random random) {
+        this(cardPoolSize, random, Clock.systemDefaultZone());
+    }
+
+    public TransactionGenerator(int cardPoolSize, Random random, Clock clock) {
         this.random = random;
+        this.clock = clock;
         this.cardPool = new ArrayList<>(cardPoolSize);
         for (int i = 0; i < cardPoolSize; i++) {
             // Tokenised reference, never anything resembling a real PAN.
             cardPool.add("card-%05d".formatted(i));
         }
+
+        this.byCategory = SouthAfricanData.MERCHANTS.stream()
+                .collect(Collectors.groupingBy(Merchant::category));
+        // Sorted rather than in map order: the draw walks this list, so a stable
+        // order is what keeps a seeded generator reproducible.
+        this.categories = byCategory.keySet().stream().sorted().toList();
+
+        this.cumulativeWeights = new int[categories.size()];
+        int running = 0;
+        for (int i = 0; i < categories.size(); i++) {
+            running += SouthAfricanData.CATEGORY_WEIGHTS.getOrDefault(categories.get(i), 1);
+            cumulativeWeights[i] = running;
+        }
+        this.totalWeight = running;
     }
 
-    /** An ordinary transaction: local merchant, sensible amount, business hours. */
+    /** An ordinary transaction: local merchant, sensible amount, happening now. */
     public Transaction normal() {
-        Merchant merchant = pick(SouthAfricanData.MERCHANTS);
+        Merchant merchant = pickMerchant();
         return build(pickCard(), merchant, amountFor(merchant),
-                SouthAfricanData.HOME_COUNTRY, businessHoursTimestamp(), channelFor(merchant));
+                SouthAfricanData.HOME_COUNTRY, now(), channelFor(merchant));
     }
 
     /**
@@ -58,49 +93,49 @@ public class TransactionGenerator {
     public List<Transaction> fraudulent(FraudPattern pattern) {
         return switch (pattern) {
             case HIGH_VALUE -> {
-                Merchant m = pick(SouthAfricanData.MERCHANTS);
+                Merchant m = pickMerchant();
                 // Comfortably past the R50 000 threshold.
                 BigDecimal amount = randomAmount(55_000, 180_000);
                 yield List.of(build(pickCard(), m, amount, SouthAfricanData.HOME_COUNTRY,
-                        businessHoursTimestamp(), Channel.ONLINE));
+                        now(), Channel.ONLINE));
             }
             case VELOCITY_BURST -> {
                 // One card, several transactions inside a couple of minutes: the
                 // signature of a stolen card being drained before it is blocked.
                 String card = pickCard();
-                Instant now = Instant.now();
+                Instant now = clock.instant();
                 List<Transaction> burst = new ArrayList<>();
                 int count = 6 + random.nextInt(4);
                 for (int i = 0; i < count; i++) {
-                    Merchant m = pick(SouthAfricanData.MERCHANTS);
+                    Merchant m = pickMerchant();
                     burst.add(build(card, m, amountFor(m), SouthAfricanData.HOME_COUNTRY,
                             now.minusSeconds((long) (count - i) * 20), Channel.ONLINE));
                 }
                 yield burst;
             }
             case LATE_NIGHT -> {
-                Merchant m = pick(SouthAfricanData.MERCHANTS);
+                Merchant m = pickMerchant();
                 yield List.of(build(pickCard(), m, amountFor(m),
                         SouthAfricanData.HOME_COUNTRY, lateNightTimestamp(), Channel.ONLINE));
             }
             case ROUND_AMOUNT -> {
-                Merchant m = pick(SouthAfricanData.MERCHANTS);
+                Merchant m = pickMerchant();
                 // Exact multiple of 1 000, at or above the R5 000 floor.
                 BigDecimal amount = BigDecimal.valueOf((5 + random.nextInt(25)) * 1000L)
                         .setScale(2, RoundingMode.UNNECESSARY);
                 yield List.of(build(pickCard(), m, amount, SouthAfricanData.HOME_COUNTRY,
-                        businessHoursTimestamp(), Channel.ATM));
+                        now(), Channel.ATM));
             }
             case CROSS_BORDER -> {
-                Merchant m = pick(SouthAfricanData.MERCHANTS);
+                Merchant m = pickMerchant();
                 yield List.of(build(pickCard(), m, amountFor(m),
                         pick(SouthAfricanData.FOREIGN_COUNTRIES),
-                        businessHoursTimestamp(), Channel.ONLINE));
+                        now(), Channel.ONLINE));
             }
             case HIGH_RISK_CATEGORY -> {
                 Merchant m = pick(SouthAfricanData.HIGH_RISK_MERCHANTS);
                 yield List.of(build(pickCard(), m, amountFor(m),
-                        SouthAfricanData.HOME_COUNTRY, businessHoursTimestamp(), Channel.ONLINE));
+                        SouthAfricanData.HOME_COUNTRY, now(), Channel.ONLINE));
             }
             case COMPOUND -> {
                 // Everything at once: a large, round, foreign, small-hours crypto
@@ -148,23 +183,46 @@ public class TransactionGenerator {
                 .setScale(2, RoundingMode.HALF_UP);
     }
 
-    /** Between 07:00 and 22:00 SAST, so ordinary traffic never trips LATE_NIGHT. */
-    private Instant businessHoursTimestamp() {
-        ZonedDateTime now = ZonedDateTime.now(SAST);
-        int hour = 7 + random.nextInt(15);
-        return now.withHour(hour)
-                .withMinute(random.nextInt(60))
-                .withSecond(random.nextInt(60))
-                .toInstant();
+    /**
+     * Now, less a fraction of a second.
+     *
+     * <p>This replaced a method that scattered ordinary traffic uniformly across
+     * 07:00–22:00 SAST, which was wrong in three separate ways. It made every
+     * time-series chart a flat block fifteen hours wide, because the arrival time
+     * carried no information. It made narrow windows nearly empty, since only
+     * about a nine-hundredth of traffic landed in any given minute. And because
+     * the hour was drawn without reference to the clock, a transaction generated
+     * at 21:21 could be stamped 21:59 — 47 rows in a sample of 1 316 were dated
+     * in the future, which no real payment system produces.
+     *
+     * <p>The shape of a day now comes from <em>when transactions are emitted</em>
+     * rather than from scattering their timestamps, which is both the honest
+     * mechanism and the one that makes a five-minute window meaningful.
+     *
+     * <p>The sub-second offset keeps transactions inside one tick from sharing an
+     * identical instant, so ordering is total rather than arbitrary.
+     */
+    private Instant now() {
+        return clock.instant().minusMillis(random.nextInt(1000));
     }
 
-    /** Between 01:00 and 04:59 SAST — inside the configured window. */
+    /**
+     * The most recent 01:00–04:59 SAST window.
+     *
+     * <p>Deliberately back-dated: an injected late-night pattern has to trip the
+     * rule whoever runs the demo and whenever they run it. Winding back a day
+     * when that window has not yet arrived today is what stops a 00:30 demo from
+     * producing transactions dated four hours into the future.
+     */
     private Instant lateNightTimestamp() {
-        ZonedDateTime now = ZonedDateTime.now(SAST);
-        return now.withHour(1 + random.nextInt(4))
+        ZonedDateTime when = ZonedDateTime.now(clock.withZone(SAST))
+                .withHour(1 + random.nextInt(4))
                 .withMinute(random.nextInt(60))
-                .withSecond(random.nextInt(60))
-                .toInstant();
+                .withSecond(random.nextInt(60));
+        if (when.toInstant().isAfter(clock.instant())) {
+            when = when.minusDays(1);
+        }
+        return when.toInstant();
     }
 
     /** Channel that fits the merchant, so the data stays internally consistent. */
@@ -175,6 +233,27 @@ public class TransactionGenerator {
             case "transport" -> Channel.MOBILE;
             default -> random.nextInt(10) < 8 ? Channel.POS : Channel.ONLINE;
         };
+    }
+
+    /**
+     * A merchant, drawn by category weight rather than uniformly.
+     *
+     * <p>Uniform selection over the merchant list gave each category a share equal
+     * to its merchant count over the total, so the mix described the shop list
+     * rather than the economy — and adding one shop name silently reweighted
+     * everything. Choosing the category first breaks that coupling.
+     */
+    private Merchant pickMerchant() {
+        int draw = random.nextInt(totalWeight);
+        for (int i = 0; i < cumulativeWeights.length; i++) {
+            if (draw < cumulativeWeights[i]) {
+                return pick(byCategory.get(categories.get(i)));
+            }
+        }
+        // Unreachable: draw < totalWeight and the last cumulative weight is the
+        // total. Falling back rather than throwing, because a generator failing
+        // on an arithmetic edge would take the stream down for nothing.
+        return pick(byCategory.get(categories.get(categories.size() - 1)));
     }
 
     private <T> T pick(List<T> from) {
