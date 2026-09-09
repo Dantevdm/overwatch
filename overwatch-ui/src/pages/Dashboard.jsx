@@ -1,18 +1,22 @@
 import { useEffect, useState } from 'react';
-import { api, zar } from '../api.js';
-import { Card, StatTile, Empty } from '../components/Primitives.jsx';
+import { api, zar, RANGES, DEFAULT_RANGE, bucketLabel, rangeLabel } from '../api.js';
+import { Card, StatTile, Empty, SegmentedControl } from '../components/Primitives.jsx';
 import { AlertsOverTime, SeverityOverTime, RuleBars } from '../components/Charts.jsx';
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [perf, setPerf] = useState([]);
   const [error, setError] = useState(null);
+  const [range, setRange] = useState(DEFAULT_RANGE);
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       try {
-        const [s, p] = await Promise.all([api.dashboard(), api.rulePerformance()]);
+        const [s, p] = await Promise.all([
+          api.dashboard({ rangeMinutes: range }),
+          api.rulePerformance(),
+        ]);
         if (!cancelled) { setStats(s); setPerf(p); setError(null); }
       } catch (e) {
         if (!cancelled) setError(e.message);
@@ -22,9 +26,16 @@ export default function Dashboard() {
     // Polling rather than websockets: five seconds is imperceptible on a
     // dashboard and costs a fraction of the complexity. Recorded as a
     // deliberate trade in the project plan, not an oversight.
+    //
+    // Five seconds regardless of range. A 5-minute window with 10-second buckets
+    // does move visibly between polls, but a faster poll for short windows would
+    // mean the refresh rate changing under the reader as they switch range, which
+    // is more disorienting than a chart that lags by a few seconds.
     const timer = setInterval(load, 5000);
+    // `range` is a dependency: switching window refetches immediately rather
+    // than waiting out the current poll interval.
     return () => { cancelled = true; clearInterval(timer); };
-  }, []);
+  }, [range]);
 
   if (error) {
     return <Empty>Could not reach the API — {error}</Empty>;
@@ -32,6 +43,22 @@ export default function Dashboard() {
   if (!stats) {
     return <Empty>Loading…</Empty>;
   }
+
+  // The server echoes back what it actually applied after clamping, so the
+  // control and the axis labels always describe the data on screen rather than
+  // the request that produced it.
+  const bucketName = bucketLabel(stats.bucketSeconds);
+  const rangeControl = (
+    <SegmentedControl
+      label="Time range for the charts"
+      value={stats.rangeMinutes}
+      onChange={setRange}
+      options={RANGES.map((r) => ({
+        value: r.minutes, label: r.label,
+        title: `Last ${r.label}`,
+      }))}
+    />
+  );
 
   const ruleRows = perf
     .filter((r) => r.timesFired > 0 || r.shadowHits > 0)
@@ -62,12 +89,24 @@ export default function Dashboard() {
                   sub="across all alerts" />
       </div>
 
-      <Card title="Alerts per hour">
-        <AlertsOverTime data={stats.alertsOverTime} />
+      <Card title={`Alerts per ${bucketName}`} action={rangeControl}>
+        <AlertsOverTime data={stats.alertsOverTime}
+                        bucketSeconds={stats.bucketSeconds}
+                        rangeMinutes={stats.rangeMinutes}
+                        bucketName={bucketName} />
+        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-fg)',
+                    marginTop: 'var(--space-3)', marginBottom: 0 }}>
+          Last {rangeLabel(stats.rangeMinutes)}, bucketed every {bucketName}. The
+          range applies to both charts; the figures above keep their own fixed
+          periods.
+        </p>
       </Card>
 
       <Card title="Severity over time">
-        <SeverityOverTime data={stats.severityOverTime} />
+        <SeverityOverTime data={stats.severityOverTime}
+                          bucketSeconds={stats.bucketSeconds}
+                          rangeMinutes={stats.rangeMinutes}
+                          bucketName={bucketName} />
       </Card>
 
       <Card title="Which rules are firing">

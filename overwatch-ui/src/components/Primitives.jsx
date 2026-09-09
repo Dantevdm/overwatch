@@ -29,9 +29,65 @@ export function Card({ title, action, children, style }) {
 }
 
 /**
+ * A segmented control for picking one option from a short list — the dashboard's
+ * time range, and the Metrics page's.
+ *
+ * A row of buttons rather than a `<select>`: there are seven options, they are two
+ * or three characters each, and the whole point of a time filter is that switching
+ * between neighbouring windows is one click. A dropdown makes comparing 15m to 30m
+ * a four-interaction round trip. Rendered as a radiogroup so the arrow keys work
+ * and a screen reader announces which window is current.
+ */
+export function SegmentedControl({ options, value, onChange, label }) {
+  return (
+    <div role="radiogroup" aria-label={label}
+         style={{
+           display: 'inline-flex', gap: 2, padding: 2,
+           background: 'var(--surface)', border: '1px solid var(--border)',
+           borderRadius: 'var(--radius-md)',
+         }}>
+      {options.map((opt) => {
+        const active = opt.value === value;
+        return (
+          <button key={opt.value} type="button" role="radio" aria-checked={active}
+                  onClick={() => onChange(opt.value)}
+                  title={opt.title}
+                  style={{
+                    appearance: 'none', cursor: 'pointer',
+                    padding: '3px 10px', borderRadius: 'calc(var(--radius-md) - 2px)',
+                    border: '1px solid transparent',
+                    background: active ? 'var(--bg)' : 'transparent',
+                    borderColor: active ? 'var(--border)' : 'transparent',
+                    boxShadow: active ? 'var(--shadow-sm)' : 'none',
+                    color: active ? 'var(--fg)' : 'var(--muted-fg)',
+                    fontWeight: active ? 600 : 400,
+                    fontSize: 'var(--text-sm)',
+                    fontVariantNumeric: 'tabular-nums',
+                  }}>
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
  * A stat tile carries a single figure. Per the form heuristic, one number is not
  * a chart — a tile says it faster and more accurately than any plot would.
  */
+/**
+ * Headline figures step down as they lengthen, so a tile shows the whole number
+ * rather than a truncated one. Thresholds are character counts because the font
+ * is tabular here — every digit is the same width, so length predicts width.
+ */
+function valueFontSize(value) {
+  const len = String(value ?? '').length;
+  if (len <= 9) return 'var(--text-2xl)';   // 28px — "R9 999.99", "27 638"
+  if (len <= 12) return 'var(--text-xl)';   // 20px — "R1 234 567"
+  return 'var(--text-lg)';                  // 16px — "R68 343 795.35"
+}
+
 export function StatTile({ label, value, sub, tone }) {
   const toneColor = {
     danger: 'var(--danger-fg)',
@@ -53,8 +109,17 @@ export function StatTile({ label, value, sub, tone }) {
                     textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 600 }}>
         {label}
       </div>
-      <div style={{ fontSize: 'var(--text-2xl)', fontWeight: 700, lineHeight: 1.15,
-                    marginTop: 'var(--space-2)', color: toneColor || 'var(--fg)' }}>
+      {/* Long figures step down a size rather than overflowing the tile.
+          "R68 343 795.35" is 14 characters and does not fit a 190px tile at 28px,
+          and the group separator is a non-breaking space precisely so an amount
+          never wraps mid-number — which left clipping as the failure mode. A
+          clipped currency figure is worse than a smaller one: "R68 343 795.3" is
+          not a wrong-looking number, it is a plausible one that is wrong. */}
+      <div title={typeof value === 'string' ? value : undefined}
+           style={{ fontSize: valueFontSize(value), fontWeight: 700, lineHeight: 1.15,
+                    marginTop: 'var(--space-2)', color: toneColor || 'var(--fg)',
+                    fontVariantNumeric: 'tabular-nums',
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {value}
       </div>
       {sub && (

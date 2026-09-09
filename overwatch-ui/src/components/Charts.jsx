@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { SEVERITIES, SEVERITY_COLOR } from '../api.js';
+import { SEVERITIES, SEVERITY_COLOR, rangeLabel } from '../api.js';
 
 /**
  * Charts are hand-authored SVG rather than a charting library.
@@ -40,7 +40,33 @@ function Tooltip({ x, y, width, height = 70, children }) {
 /**
  * Alerts over time. One series, so no legend — the title names it.
  */
-export function AlertsOverTime({ data, height = 220 }) {
+/**
+ * Time formatting that follows the bucket width.
+ *
+ * A 10-second bucket labelled "14:31" is indistinguishable from the five buckets
+ * either side of it, and a 6-hour bucket labelled "14:31" implies a precision the
+ * number does not have. So seconds appear only under a minute, and the date
+ * appears only once buckets are an hour or more.
+ */
+function bucketFormat(bucketSeconds) {
+  if (bucketSeconds < 60) {
+    return { hour: '2-digit', minute: '2-digit', second: '2-digit' };
+  }
+  if (bucketSeconds < 3600) {
+    return { hour: '2-digit', minute: '2-digit' };
+  }
+  return { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' };
+}
+
+/** Short axis-end tick: the date only when the window spans more than a day. */
+function tickFormat(rangeMinutes, bucketSeconds) {
+  // Minutes included: "02 Sept, 14" reads as a year, "02 Sept, 14:00" does not.
+  if (rangeMinutes > 1440) return { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' };
+  if (bucketSeconds < 60) return { hour: '2-digit', minute: '2-digit', second: '2-digit' };
+  return { hour: '2-digit', minute: '2-digit' };
+}
+
+export function AlertsOverTime({ data, height = 220, bucketSeconds = 3600, rangeMinutes = 1440, bucketName = 'hour' }) {
   const [hovered, setHovered] = useHover();
   const W = 720;
   const H = height;
@@ -67,7 +93,7 @@ export function AlertsOverTime({ data, height = 220 }) {
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}
-         role="img" aria-label={`Alerts per hour over the last ${data.length} hours`}>
+         role="img" aria-label={`Alerts per ${bucketName} over the last ${rangeLabel(rangeMinutes)}, ${data.length} buckets`}>
       <defs>
         <linearGradient id="alertFill" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="var(--chart-1)" stopOpacity="0.22" />
@@ -114,8 +140,7 @@ export function AlertsOverTime({ data, height = 220 }) {
             <strong>{data[hovered].count}</strong> alert{data[hovered].count === 1 ? '' : 's'}
             <br />
             <span style={{ opacity: 0.75 }}>
-              {new Date(data[hovered].hour).toLocaleString('en-ZA',
-                { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
+              {new Date(data[hovered].bucket).toLocaleString('en-ZA', bucketFormat(bucketSeconds))}
             </span>
           </Tooltip>
         </>
@@ -126,8 +151,7 @@ export function AlertsOverTime({ data, height = 220 }) {
       {data.length > 1 && [0, data.length - 1].map((i) => (
         <text key={i} x={x(i)} y={H - 8} textAnchor={i === 0 ? 'start' : 'end'}
               fontSize="11" fill="var(--muted-fg)">
-          {new Date(data[i].hour).toLocaleTimeString('en-ZA',
-            { hour: '2-digit', minute: '2-digit' })}
+          {new Date(data[i].bucket).toLocaleString('en-ZA', tickFormat(rangeMinutes, bucketSeconds))}
         </text>
       ))}
     </svg>
@@ -135,7 +159,8 @@ export function AlertsOverTime({ data, height = 220 }) {
 }
 
 /**
- * Severity over time — one line per severity across the same hourly window.
+ * Severity over time — one line per severity across the same window and buckets
+ * as the chart above.
  *
  * The series read together rather than stacked: the question a fraud team asks of
  * this chart is "is the serious end of the mix growing", and a stack answers the
@@ -171,7 +196,7 @@ const SEVERITY_STROKE = {
   CRITICAL: { width: 2.5, dash: null },
 };
 
-export function SeverityOverTime({ data, height = 240 }) {
+export function SeverityOverTime({ data, height = 240, bucketSeconds = 3600, rangeMinutes = 1440, bucketName = 'hour' }) {
   const [hovered, setHovered] = useHover();
   const W = 720;
   const H = height;
@@ -210,14 +235,14 @@ export function SeverityOverTime({ data, height = 240 }) {
     }
   }
 
-  const hourLabel = (iso) => new Date(iso).toLocaleTimeString('en-ZA',
-    { hour: '2-digit', minute: '2-digit' });
+  const tick = (iso) => new Date(iso).toLocaleString('en-ZA',
+    tickFormat(rangeMinutes, bucketSeconds));
 
   return (
     <div>
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}
            role="img" aria-label={
-             `Alerts per hour by severity over the last ${data.length} hours. Totals: ` +
+             `Alerts per ${bucketName} by severity over the last ${rangeLabel(rangeMinutes)}. Totals: ` +
              SEVERITIES.map((s) => `${totals[s]} ${s}`).join(', ')
            }>
 
@@ -278,8 +303,7 @@ export function SeverityOverTime({ data, height = 240 }) {
             ))}
             <Tooltip x={x(hovered)} y={PAD.top + 46} width={W - RIGHT} height={104}>
               <div style={{ opacity: 0.75, marginBottom: 3 }}>
-                {new Date(data[hovered].hour).toLocaleString('en-ZA',
-                  { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
+                {new Date(data[hovered].bucket).toLocaleString('en-ZA', bucketFormat(bucketSeconds))}
               </div>
               {SEVERITIES.map((sev) => (
                 <div key={sev} style={{ display: 'flex', justifyContent: 'space-between',
@@ -299,7 +323,7 @@ export function SeverityOverTime({ data, height = 240 }) {
         {data.length > 1 && [0, data.length - 1].map((i) => (
           <text key={i} x={x(i)} y={H - 8} textAnchor={i === 0 ? 'start' : 'end'}
                 fontSize="11" fill="var(--muted-fg)">
-            {hourLabel(data[i].hour)}
+            {tick(data[i].bucket)}
           </text>
         ))}
       </svg>

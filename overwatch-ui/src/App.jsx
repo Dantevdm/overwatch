@@ -5,6 +5,8 @@ import Alerts from './pages/Alerts.jsx';
 import Transactions from './pages/Transactions.jsx';
 import Rules from './pages/Rules.jsx';
 import Simulator from './pages/Simulator.jsx';
+import Metrics from './pages/Metrics.jsx';
+import ResetData from './components/ResetData.jsx';
 import { api } from './api.js';
 
 const NAV = [
@@ -12,6 +14,7 @@ const NAV = [
   { to: '/transactions', label: 'Transactions' },
   { to: '/alerts', label: 'Alerts' },
   { to: '/rules', label: 'Rules' },
+  { to: '/metrics', label: 'Metrics' },
   { to: '/simulator', label: 'Simulator' },
 ];
 
@@ -26,6 +29,11 @@ export default function App() {
 function Shell() {
   const [openAlerts, setOpenAlerts] = useState(null);
   const [live, setLive] = useState(false);
+  // Bumped by the reset control. Used as a key on <Routes>, which remounts the
+  // current page and so re-runs its initial fetch — otherwise a cleared store
+  // would keep showing the old figures for up to one 5-second poll, which reads
+  // as the reset having failed.
+  const [resetNonce, setResetNonce] = useState(0);
 
   useEffect(() => {
     const poll = () => api.dashboard()
@@ -34,7 +42,7 @@ function Shell() {
     poll();
     const t = setInterval(poll, 5000);
     return () => clearInterval(t);
-  }, []);
+  }, [resetNonce]);
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--canvas)' }}>
@@ -87,23 +95,27 @@ function Shell() {
           position: 'sticky', top: 0, zIndex: 10,
         }}>
           <span style={{ fontWeight: 600 }}>Fraud monitoring — South Africa</span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7,
-                         fontSize: 'var(--text-xs)', color: 'var(--muted-fg)' }}>
-            <span aria-hidden="true" style={{
-              width: 8, height: 8, borderRadius: '50%',
-              background: live ? 'var(--success-fg)' : 'var(--muted-fg)',
-            }} />
-            {live ? 'Live' : 'Disconnected'}
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7,
+                           fontSize: 'var(--text-xs)', color: 'var(--muted-fg)' }}>
+              <span aria-hidden="true" style={{
+                width: 8, height: 8, borderRadius: '50%',
+                background: live ? 'var(--success-fg)' : 'var(--muted-fg)',
+              }} />
+              {live ? 'Live' : 'Disconnected'}
+            </span>
+            <ResetData onReset={() => { setOpenAlerts(0); setResetNonce((n) => n + 1); }} />
+          </div>
         </header>
 
         <div style={{ padding: 'var(--space-6)' }}>
-          <Routes>
+          <Routes key={resetNonce}>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/transactions" element={<Transactions />} />
             <Route path="/alerts" element={<Alerts />} />
             <Route path="/rules" element={<Rules />} />
+            <Route path="/metrics" element={<Metrics />} />
             <Route path="/simulator" element={<Simulator />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

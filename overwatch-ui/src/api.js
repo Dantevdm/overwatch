@@ -29,7 +29,7 @@ async function send(method, path, body) {
 }
 
 export const api = {
-  dashboard: () => get('/stats/dashboard'),
+  dashboard: (p) => get('/stats/dashboard', p),
   alerts: (p) => get('/alerts', p),
   alert: (id) => get(`/alerts/${id}`),
   setAlertStatus: (id, status) => send('PATCH', `/alerts/${id}/status`, { status }),
@@ -39,6 +39,10 @@ export const api = {
   setRuleState: (id, state) => send('PATCH', `/rules/${id}/state`, { state }),
   setRuleWeight: (id, weight) => send('PATCH', `/rules/${id}/weight`, { weight }),
   replay: (body) => send('POST', '/replay', body),
+
+  // Clears transactions, alerts and rule hits — not rule configuration. Always
+  // behind a confirmation in the UI: it is the one call here that destroys data.
+  resetData: () => send('POST', '/admin/reset'),
   replayRuleTypes: () => get('/replay/rule-types'),
 
   // Simulator control. Proxied by the API, so the browser never needs to know
@@ -66,12 +70,70 @@ export const PATTERN_COPY = {
   COMPOUND:           { label: 'Compound',          rule: 'five rules at once',  blurb: 'Large, round, foreign, small-hours and crypto together — the one that reaches CRITICAL.' },
 };
 
-/** "R52 340.00" — space as thousands separator, the South African convention. */
+/**
+ * The windows the dashboard's time filter offers.
+ *
+ * `minutes` is what the API takes; `label` is what the control shows. The server
+ * derives bucket width from the range and returns it, so this list carries no
+ * opinion about bucketing — adding a range here needs no server change.
+ */
+export const RANGES = [
+  { minutes: 5,     label: '5m' },
+  { minutes: 15,    label: '15m' },
+  { minutes: 30,    label: '30m' },
+  { minutes: 60,    label: '1h' },
+  { minutes: 720,   label: '12h' },
+  { minutes: 1440,  label: '24h' },
+  { minutes: 10080, label: '7d' },
+];
+
+export const DEFAULT_RANGE = 1440;
+
+/**
+ * "10 seconds", "30 minutes", "6 hours" — a bucket width in words.
+ *
+ * The charts are titled from this rather than hardcoding "per hour", because the
+ * same chart is per-10-seconds over five minutes and per-6-hours over a week, and
+ * a chart that mislabels its own bucket is worse than one with no label at all.
+ */
+export function bucketLabel(seconds) {
+  if (!seconds || seconds <= 0) return '';
+  if (seconds % 3600 === 0) {
+    const h = seconds / 3600;
+    return h === 1 ? 'hour' : `${h} hours`;
+  }
+  if (seconds % 60 === 0) {
+    const m = seconds / 60;
+    return m === 1 ? 'minute' : `${m} minutes`;
+  }
+  return seconds === 1 ? 'second' : `${seconds} seconds`;
+}
+
+/** The label for a range, for prose like "over the last 15m". */
+export function rangeLabel(minutes) {
+  return RANGES.find((r) => r.minutes === minutes)?.label ?? `${minutes}m`;
+}
+
+/**
+ * "R52 340.00" — space as thousands separator, the South African convention.
+ *
+ * Grouped by hand rather than by post-processing a locale string. The obvious
+ * version, `toLocaleString('en-ZA', …).replace(/,/g, ' ')`, assumes en-ZA
+ * groups with commas the way en-US does. It does not: en-ZA groups with a
+ * non-breaking space and uses a comma as the *decimal* separator, so that
+ * replace deleted the decimal point instead of the thousands separator and
+ * R863.11 rendered as "R863 11" — every amount on every screen silently a
+ * hundred times too large to read.
+ *
+ * The separator is a non-breaking space so an amount never wraps across two
+ * lines mid-number.
+ */
 export function zar(amount) {
   const n = Number(amount ?? 0);
-  return `R${n.toLocaleString('en-ZA', {
-    minimumFractionDigits: 2, maximumFractionDigits: 2,
-  }).replace(/,/g, ' ')}`;
+  if (!Number.isFinite(n)) return 'R0.00';
+  const [whole, fraction] = Math.abs(n).toFixed(2).split('.');
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0');
+  return `${n < 0 ? '-' : ''}R${grouped}.${fraction}`;
 }
 
 export function shortTime(iso) {
