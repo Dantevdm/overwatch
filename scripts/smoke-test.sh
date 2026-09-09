@@ -95,6 +95,20 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+section "Simulator control (proxied through the API)"
+# ---------------------------------------------------------------------------
+# The simulator publishes no host port. If these pass, the proxy hop works and the
+# dashboard's Simulator screen has something to talk to.
+check "simulator status reachable via /api" body_matches "$API_BASE/api/simulator/status" '"running"'
+check "status advertises fraud patterns"    body_matches "$API_BASE/api/simulator/status" 'COMPOUND'
+
+# ---------------------------------------------------------------------------
+section "Dashboard aggregations"
+# ---------------------------------------------------------------------------
+check "dashboard stats include the severity series" \
+  body_matches "$API_BASE/api/stats/dashboard" 'severityOverTime'
+
+# ---------------------------------------------------------------------------
 section "Metrics endpoints (Micrometer -> Prometheus)"
 # ---------------------------------------------------------------------------
 check "fraud-api exposes /actuator/prometheus" body_matches "$API_BASE/actuator/prometheus" "jvm_memory_used_bytes"

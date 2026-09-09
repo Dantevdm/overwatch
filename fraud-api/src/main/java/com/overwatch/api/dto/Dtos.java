@@ -91,10 +91,21 @@ public final class Dtos {
             double averageRiskScore, BigDecimal flaggedLast24hZar,
             Map<String, Long> alertsBySeverity,
             Map<String, Long> transactionsByCategory,
-            List<TimeBucket> alertsOverTime) {
+            List<TimeBucket> alertsOverTime,
+            List<SeverityBucket> severityOverTime) {
     }
 
     public record TimeBucket(Instant hour, long count) {
+    }
+
+    /**
+     * One hour of alerts, split by severity.
+     *
+     * <p>{@code counts} always carries every severity, zeros included. A chart
+     * whose series appear and disappear as hours go quiet draws lines that jump
+     * between non-adjacent points, which reads as a spike that never happened.
+     */
+    public record SeverityBucket(Instant hour, Map<String, Long> counts) {
     }
 
     /** What-if request: a candidate configuration and a window to replay. */

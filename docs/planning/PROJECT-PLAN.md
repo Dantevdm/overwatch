@@ -202,6 +202,34 @@ adding one class that implements `FraudRule` — no schema migration.
 > light-end contrast in both themes independently. Every JSX file was parsed with
 > esbuild; a keyed list using a shorthand fragment was caught and fixed.
 
+### Phase 8.5 — Severity trend and simulator control
+
+- [x] `severityOverTime` on the dashboard stats: alerts per hour split by severity,
+      dense across the window so quiet hours read as zero rather than as a slope
+- [x] Severity shown as four lines rather than one stacked bar
+- [x] Simulator control API proxied through `fraud-api` under `/api/simulator`
+- [x] **Simulator** screen — run state, throughput and fraud-share sliders, live
+      counters, one inject button per fraud pattern
+
+> **Verified.** The new time-series query was run against a real PostgreSQL 16 with
+> the migrations applied and alerts seeded across six hours; it returns the three
+> columns the mapper reads, and confirms the sparse-hour case the dense fill exists
+> for. The whole dashboard was bundled from `main.jsx` with esbuild, and the chart
+> was server-rendered against 25 hourly buckets and checked numerically: no NaN,
+> every text mark inside the viewBox, all path points within the plot, and the
+> direct end labels at least 13px apart after collision avoidance.
+>
+> **A note on the palette check.** The categorical validator fails this ramp, and
+> that is the correct result for the wrong test. A four-step single hue cannot
+> reach the categorical adjacent-pair floor of 15 ΔE: the usable lightness band is
+> about 0.30 wide, so four steps land ~0.10 apart. Severity is ordinal, so the
+> right test is monotonic lightness, which the ramp passes in both themes
+> (0.715 → 0.421 light, 0.892 → 0.619 dark, hue spread 4.4°). Four thin lines
+> differing only in lightness are still hard to follow where they cross, so
+> severity is encoded three ways at once — lightness, stroke weight, and dash,
+> from a fine dotted LOW to a solid heavy CRITICAL — with direct end labels and a
+> legend on top of that. Identity never rests on hue.
+
 ### Phase 7 — Observability
 - [x] Actuator and Micrometer on all services
 - [x] Business metrics — latency percentiles, alerts by rule, shadow hits, ZAR flagged

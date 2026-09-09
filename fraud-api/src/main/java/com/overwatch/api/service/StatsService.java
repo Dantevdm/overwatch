@@ -15,6 +15,9 @@ import java.util.*;
 @Service
 public class StatsService {
 
+    /** Ordinal, least to most severe. The order the chart legend and stack follow. */
+    private static final List<String> SEVERITIES = List.of("LOW", "MEDIUM", "HIGH", "CRITICAL");
+
     private final AlertRepository alerts;
     private final TransactionReadRepository transactions;
     private final RuleRepository rules;
@@ -32,7 +35,7 @@ public class StatsService {
         Instant dayAgo = Instant.now().minus(24, ChronoUnit.HOURS);
 
         Map<String, Long> bySeverity = new LinkedHashMap<>();
-        for (String s : List.of("LOW", "MEDIUM", "HIGH", "CRITICAL")) {
+        for (String s : SEVERITIES) {
             bySeverity.put(s, 0L);   // present with zero, so charts keep a stable shape
         }
         for (Object[] row : alerts.countBySeverity()) {
@@ -57,7 +60,39 @@ public class StatsService {
                 alerts.countByStatus("OPEN"),
                 Optional.ofNullable(alerts.averageRiskScore()).orElse(0.0),
                 Optional.ofNullable(alerts.totalFlaggedSince(dayAgo)).orElse(BigDecimal.ZERO),
-                bySeverity, byCategory, series);
+                bySeverity, byCategory, series, severitySeries(dayAgo));
+    }
+
+    /**
+     * Alerts per hour split by severity, over the trailing 24 hours.
+     *
+     * <p>Dense, not sparse: every hour in the window is present even when nothing
+     * fired. A line chart built from sparse buckets connects two points an hour
+     * apart across a quiet stretch, drawing a slope that says traffic declined
+     * gradually when in fact it stopped. Zeros make the quiet visible.
+     */
+    private List<SeverityBucket> severitySeries(Instant since) {
+        Instant start = since.truncatedTo(ChronoUnit.HOURS);
+        Instant end = Instant.now().truncatedTo(ChronoUnit.HOURS);
+
+        Map<Instant, Map<String, Long>> byHour = new LinkedHashMap<>();
+        for (Instant h = start; !h.isAfter(end); h = h.plus(1, ChronoUnit.HOURS)) {
+            Map<String, Long> zeros = new LinkedHashMap<>();
+            SEVERITIES.forEach(s -> zeros.put(s, 0L));
+            byHour.put(h, zeros);
+        }
+
+        for (Object[] row : alerts.hourlyCountsBySeverity(since)) {
+            Instant bucket = row[0] instanceof Timestamp ts ? ts.toInstant() : (Instant) row[0];
+            Map<String, Long> counts = byHour.get(bucket.truncatedTo(ChronoUnit.HOURS));
+            if (counts != null) {                     // a row on the window boundary
+                counts.put((String) row[1], ((Number) row[2]).longValue());
+            }
+        }
+
+        return byHour.entrySet().stream()
+                .map(e -> new SeverityBucket(e.getKey(), e.getValue()))
+                .toList();
     }
 
     /**

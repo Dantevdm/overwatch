@@ -34,6 +34,9 @@ overwatch:
   api:
     # The dashboard is served from a different origin in development.
     cors-allowed-origins: ${CORS_ORIGINS:http://localhost:5173}
+    # The simulator's control API, proxied under /api/simulator so the dashboard
+    # stays on one origin and the simulator needs no published port.
+    simulator-url: ${SIMULATOR_URL:http://localhost:8081}
 # Actuator: health for compose orchestration, prometheus for scraping.
 # Only what is needed is exposed — this is not "expose: *".
 management:

@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard.jsx';
 import Alerts from './pages/Alerts.jsx';
 import Transactions from './pages/Transactions.jsx';
 import Rules from './pages/Rules.jsx';
+import Simulator from './pages/Simulator.jsx';
 import { api } from './api.js';
 
 const NAV = [
@@ -11,6 +12,7 @@ const NAV = [
   { to: '/transactions', label: 'Transactions' },
   { to: '/alerts', label: 'Alerts' },
   { to: '/rules', label: 'Rules' },
+  { to: '/simulator', label: 'Simulator' },
 ];
 
 export default function App() {
@@ -102,6 +104,7 @@ function Shell() {
             <Route path="/transactions" element={<Transactions />} />
             <Route path="/alerts" element={<Alerts />} />
             <Route path="/rules" element={<Rules />} />
+            <Route path="/simulator" element={<Simulator />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </div>

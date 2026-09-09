@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, zar } from '../api.js';
 import { Card, StatTile, Empty } from '../components/Primitives.jsx';
-import { AlertsOverTime, SeverityBreakdown, RuleBars } from '../components/Charts.jsx';
+import { AlertsOverTime, SeverityOverTime, RuleBars } from '../components/Charts.jsx';
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
@@ -66,23 +66,20 @@ export default function Dashboard() {
         <AlertsOverTime data={stats.alertsOverTime} />
       </Card>
 
-      <div style={{ display: 'grid', gap: 'var(--space-5)',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))' }}>
-        <Card title="Severity">
-          <SeverityBreakdown counts={stats.alertsBySeverity} />
-        </Card>
+      <Card title="Severity over time">
+        <SeverityOverTime data={stats.severityOverTime} />
+      </Card>
 
-        <Card title="Which rules are firing">
-          <RuleBars rows={ruleRows} />
-          {ruleRows.some((r) => r.shadow) && (
-            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-fg)',
-                        marginTop: 'var(--space-4)', marginBottom: 0 }}>
-              Lighter bars are rules in shadow — evaluated against live traffic,
-              recording what they would have caught, raising no alerts.
-            </p>
-          )}
-        </Card>
-      </div>
+      <Card title="Which rules are firing">
+        <RuleBars rows={ruleRows} />
+        {ruleRows.some((r) => r.shadow) && (
+          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-fg)',
+                      marginTop: 'var(--space-4)', marginBottom: 0 }}>
+            Lighter bars are rules in shadow — evaluated against live traffic,
+            recording what they would have caught, raising no alerts.
+          </p>
+        )}
+      </Card>
     </div>
   );
 }

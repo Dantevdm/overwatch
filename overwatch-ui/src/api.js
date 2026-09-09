@@ -40,6 +40,30 @@ export const api = {
   setRuleWeight: (id, weight) => send('PATCH', `/rules/${id}/weight`, { weight }),
   replay: (body) => send('POST', '/replay', body),
   replayRuleTypes: () => get('/replay/rule-types'),
+
+  // Simulator control. Proxied by the API, so the browser never needs to know
+  // that the simulator is a separate service on a port nobody publishes.
+  simulatorStatus: () => get('/simulator/status'),
+  simulatorStart: () => send('POST', '/simulator/start'),
+  simulatorPause: () => send('POST', '/simulator/pause'),
+  simulatorRate: (perSecond) => send('POST', `/simulator/rate?perSecond=${perSecond}`),
+  simulatorFraudRate: (rate) => send('POST', `/simulator/fraud-rate?rate=${rate}`),
+  simulatorInject: (pattern) => send('POST', `/simulator/inject/${pattern}`),
+};
+
+/**
+ * What each injectable pattern is for. The simulator advertises the names; this
+ * says what a reviewer will see when they press the button, which is the part
+ * that makes the control panel a demonstration rather than a set of levers.
+ */
+export const PATTERN_COPY = {
+  HIGH_VALUE:         { label: 'High value',        rule: 'HIGH_VALUE',         blurb: 'One very large amount on a single card.' },
+  VELOCITY_BURST:     { label: 'Velocity burst',    rule: 'VELOCITY',           blurb: 'Several transactions on one card within minutes.' },
+  LATE_NIGHT:         { label: 'Late night',        rule: 'LATE_NIGHT',         blurb: 'Timestamped in the small hours, SAST.' },
+  ROUND_AMOUNT:       { label: 'Round amount',      rule: 'ROUND_AMOUNT',       blurb: 'An exact multiple of R1 000 above the floor.' },
+  CROSS_BORDER:       { label: 'Cross border',      rule: 'CROSS_BORDER',       blurb: 'Acquired outside South Africa.' },
+  HIGH_RISK_CATEGORY: { label: 'High-risk category', rule: 'CATEGORY_WATCHLIST', blurb: 'A crypto, gambling or forex merchant.' },
+  COMPOUND:           { label: 'Compound',          rule: 'five rules at once',  blurb: 'Large, round, foreign, small-hours and crypto together — the one that reaches CRITICAL.' },
 };
 
 /** "R52 340.00" — space as thousands separator, the South African convention. */

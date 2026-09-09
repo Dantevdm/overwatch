@@ -48,6 +48,22 @@ public interface AlertRepository extends JpaRepository<FraudAlertEntity, UUID> {
     @Query("SELECT COALESCE(AVG(a.riskScore), 0) FROM FraudAlertEntity a")
     Double averageRiskScore();
 
+    /**
+     * Alerts per hour, split by severity, for the dashboard's severity trend.
+     *
+     * <p>Returned long rather than pivoted in SQL: a crosstab would need the four
+     * severity names baked into the statement, and severities are an enum the
+     * application already knows. Pivoting in {@code StatsService} keeps the query
+     * indifferent to how many severities exist.
+     */
+    @Query(value = """
+            SELECT date_trunc('hour', created_at) AS bucket, severity, COUNT(*)
+            FROM fraud_alerts
+            WHERE created_at >= :since
+            GROUP BY bucket, severity ORDER BY bucket
+            """, nativeQuery = true)
+    List<Object[]> hourlyCountsBySeverity(@Param("since") Instant since);
+
     /** Alerts per hour for the dashboard's time series. */
     @Query(value = """
             SELECT date_trunc('hour', created_at) AS bucket, COUNT(*)

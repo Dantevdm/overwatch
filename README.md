@@ -246,11 +246,17 @@ skewed toward small purchases the way genuine spend is. Ordinary traffic
 deliberately never lands in the late-night window and never touches a watchlisted
 category, so those rules only fire on something actually unusual.
 
-A share of traffic is shaped to trip rules, and you can also direct it:
+A share of traffic is shaped to trip rules, and you can also direct it — from the
+**Simulator** screen in the dashboard, or over the API:
 
 ```bash
 curl -X POST localhost:8080/api/simulator/inject/COMPOUND
 ```
+
+The Simulator screen puts the same controls behind sliders and buttons: run state,
+throughput, fraud share, live published counters, and one button per pattern with a
+line saying which rule it trips. Drop the rate to one or two per second and every
+alert on the dashboard is one you can follow to its rule.
 
 `COMPOUND` puts a large, round, foreign, small-hours crypto transaction on the
 stream. A CRITICAL alert with five contributing rules appears about a second later
@@ -263,7 +269,12 @@ than latching on the first hit.
 | `POST /api/simulator/pause` | Stop the stream — useful for reading a single alert |
 | `POST /api/simulator/start` | Resume |
 | `POST /api/simulator/rate?perSecond=50` | Change throughput without a restart |
+| `POST /api/simulator/fraud-rate?rate=0.2` | Change the share of traffic shaped as fraud |
 | `POST /api/simulator/inject/{pattern}` | Publish one specific fraud shape now |
+
+These are served by `fraud-api` on 8080 and forwarded to the simulator over the
+compose network, so the dashboard stays on one origin and the simulator needs no
+published port of its own.
 
 Patterns: `HIGH_VALUE`, `VELOCITY_BURST`, `LATE_NIGHT`, `ROUND_AMOUNT`,
 `CROSS_BORDER`, `HIGH_RISK_CATEGORY`, `COMPOUND`.
@@ -374,8 +385,8 @@ postman/Overwatch-Local.postman_environment.json
 ```
 
 If preflight moved a port, `make urls` prints the values to put in the environment.
-The simulator's control endpoints need `make up-tools`, since it is internal to the
-compose network by default.
+The simulator's control endpoints are reached through `fraud-api` on 8080 like the
+rest of the API — no `make up-tools` needed.
 
 ---
 
