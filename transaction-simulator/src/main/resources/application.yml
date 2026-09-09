@@ -1,0 +1,43 @@
+spring:
+  application:
+    name: transaction-simulator
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:19092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.add.type.headers: false
+
+server:
+  port: 8081
+
+# Simulator behaviour. Tunable at runtime so the stream can be driven hard for a
+# load demonstration or slowed right down for a walkthrough.
+overwatch:
+  simulator:
+    enabled: true
+    transactions-per-second: 5
+    # Share of generated traffic deliberately shaped to trip rules. Real-world
+    # card fraud sits well under 1%; 8% keeps the demo interesting without making
+    # the alert list meaningless.
+    fraud-injection-rate: 0.08
+# Actuator: health for compose orchestration, prometheus for scraping.
+# Only what is needed is exposed — this is not "expose: *".
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  prometheus:
+    metrics:
+      export:
+        enabled: true

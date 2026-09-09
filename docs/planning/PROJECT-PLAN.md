@@ -116,11 +116,20 @@ adding one class that implements `FraudRule` — no schema migration.
 - [x] Repository skeleton, documentation folder, README
 
 ### Phase 1 — Scaffolding
-- [ ] Parent Maven POM and three service modules
-- [ ] Shared `common` module — domain records, events, constants
-- [ ] Dockerfile per service (multi-stage, JRE-slim runtime)
-- [ ] `docker-compose.yml` — postgres, redpanda, three services, ui, prometheus, grafana
-- [ ] Health checks and dependency ordering so `up` works from cold
+- [x] Parent Maven POM and three service modules
+- [x] Shared `common` module — domain records, events, constants
+- [x] Dockerfile per service (multi-stage, JRE-slim runtime, non-root)
+- [x] `docker-compose.yml` — postgres, redpanda, three services, ui, prometheus, grafana
+- [x] Health checks and dependency ordering so `up` works from cold
+- [x] Prometheus scrape config + Grafana datasource/dashboard provisioning
+- [x] React + Vite UI scaffold wired to the design tokens
+- [ ] Verify a cold `docker compose up` on the host (needs Docker — see note)
+
+> **Verification note.** The `common` module was compiled and unit-checked
+> (`javac -Xlint:all`, 22 assertions covering severity boundaries, shadow-mode
+> isolation and score capping — all passing). The full Maven build and
+> `docker compose up` still need one run on a machine with Docker and access to
+> Maven Central; the build environment used here has neither.
 
 ### Phase 2 — Data layer
 - [ ] Schema migration — transactions, fraud_rules, fraud_alerts

@@ -1,0 +1,36 @@
+# Prometheus scrape configuration for the Overwatch stack.
+# Mounted into the container at startup — no manual target setup.
+
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+  external_labels:
+    stack: overwatch
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # All three services expose Micrometer metrics on the Actuator prometheus
+  # endpoint. Service names resolve over the compose network.
+  - job_name: fraud-engine
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['fraud-engine:8082']
+        labels:
+          service: fraud-engine
+
+  - job_name: fraud-api
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['fraud-api:8080']
+        labels:
+          service: fraud-api
+
+  - job_name: transaction-simulator
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['transaction-simulator:8081']
+        labels:
+          service: transaction-simulator

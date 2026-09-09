@@ -1,0 +1,185 @@
+# Overwatch — full stack.
+#
+#   docker compose up
+#
+# Health checks and `service_healthy` conditions matter here: without them the
+# engine races Postgres and Redpanda on a cold start and crash-loops until they
+# happen to be ready. With them, `up` works first try on a machine that has never
+# seen this repo.
+
+name: overwatch
+
+services:
+
+  # ---- infrastructure -------------------------------------------------------
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: ow-postgres
+    environment:
+      POSTGRES_DB: overwatch
+      POSTGRES_USER: overwatch
+      POSTGRES_PASSWORD: overwatch
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Anything in this directory runs on first boot of an empty volume.
+      # Phase 2 drops the schema and seed data here.
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U overwatch -d overwatch"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redpanda:
+    image: redpandadata/redpanda:v24.2.7
+    container_name: ow-redpanda
+    command:
+      - redpanda start
+      - --smp 1
+      - --memory 1G
+      - --overprovisioned
+      - --node-id 0
+      - --check=false
+      # Two listeners: 'internal' for containers on the compose network,
+      # 'external' for tools running on the host.
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+    ports:
+      - "19092:19092"
+      - "9644:9644"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+    restart: unless-stopped
+
+  # ---- application ----------------------------------------------------------
+
+  fraud-engine:
+    build:
+      context: .
+      dockerfile: fraud-engine/Dockerfile
+    container_name: ow-fraud-engine
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/overwatch
+      DB_USER: overwatch
+      DB_PASSWORD: overwatch
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8082/actuator/health/readiness | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    restart: unless-stopped
+
+  fraud-api:
+    build:
+      context: .
+      dockerfile: fraud-api/Dockerfile
+    container_name: ow-fraud-api
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/overwatch
+      DB_USER: overwatch
+      DB_PASSWORD: overwatch
+      CORS_ORIGINS: http://localhost:5173
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health/readiness | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    restart: unless-stopped
+
+  transaction-simulator:
+    build:
+      context: .
+      dockerfile: transaction-simulator/Dockerfile
+    container_name: ow-simulator
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+    ports:
+      - "8081:8081"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      # Start producing only once there is something to consume the stream.
+      fraud-engine:
+        condition: service_healthy
+    restart: unless-stopped
+
+  overwatch-ui:
+    build:
+      context: ./overwatch-ui
+    container_name: ow-ui
+    environment:
+      VITE_API_URL: http://fraud-api:8080
+    ports:
+      - "5173:5173"
+    depends_on:
+      - fraud-api
+    restart: unless-stopped
+
+  # ---- observability --------------------------------------------------------
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: ow-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=6h
+      - --web.enable-lifecycle
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: ow-grafana
+    environment:
+      # Anonymous viewer access: this is a demo stack, and a login wall between the
+      # reviewer and the dashboards serves nobody.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_USERS_DEFAULT_THEME: light
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/pipeline-health.json
+    ports:
+      - "3000:3000"
+    volumes:
+      # Provisioning: datasource and dashboards exist on first boot, no imports.
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redpanda-data:
+  prometheus-data:
+  grafana-data:

@@ -1,0 +1,13 @@
+# Datasource provisioning. Grafana reads this on startup, so Prometheus is already
+# connected the first time anyone opens the UI.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: 10s

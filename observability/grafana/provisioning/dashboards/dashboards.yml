@@ -1,0 +1,16 @@
+# Dashboard provisioning. Any JSON dropped into the mounted dashboards directory is
+# picked up automatically, which is how the fraud dashboards arrive in Phase 7
+# without anyone importing them by hand.
+apiVersion: 1
+
+providers:
+  - name: overwatch
+    orgId: 1
+    folder: Overwatch
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
