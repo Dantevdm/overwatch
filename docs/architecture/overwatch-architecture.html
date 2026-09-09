@@ -246,7 +246,7 @@ p { font-size: 14px; line-height: 1.7; color: var(--fg); margin: 0 0 12px; }
     <p class="sub">Architecture & implementation plan for the interview assignment.<br>
     A system that ingests categorized transaction events, applies configurable fraud rules, and surfaces flagged activity through a real-time dashboard.</p>
     <div class="meta">
-      <span>Java 21 · Spring Boot 3</span>
+      <span>Java 25 · Spring Boot 4</span>
       <span>Redpanda · PostgreSQL</span>
       <span>React + Vite</span>
       <span>Docker Compose</span>
@@ -360,7 +360,7 @@ p { font-size: 14px; line-height: 1.7; color: var(--fg); margin: 0 0 12px; }
 
     <div class="decision">
       <span class="label">DECIDED</span>
-      <div><strong>Java 21 + Spring Boot 3.3 + Maven</strong> — Industry-standard, excellent Kafka client support via Spring Kafka, built-in Actuator for Prometheus metrics. Virtual threads for the engine's concurrent rule processing.</div>
+      <div><strong>Java 25 (LTS) + Spring Boot 4.1 + Maven</strong> — Both on current supported lines, not trailing ones. Spring Kafka for the event pipeline, Actuator + Micrometer for Prometheus metrics, and virtual threads for the engine's per-transaction concurrency.</div>
     </div>
     <div class="decision">
       <span class="label">DECIDED</span>

@@ -1,5 +1,5 @@
 # ---- build stage -------------------------------------------------------------
-FROM maven:3.9-eclipse-temurin-21 AS build
+FROM maven:3.9-eclipse-temurin-25-alpine AS build
 WORKDIR /build
 
 # Copy only the POMs first and resolve dependencies as their own layer. A change to
@@ -16,7 +16,7 @@ COPY transaction-simulator/src transaction-simulator/src
 RUN mvn -B -q clean package -pl common,transaction-simulator -am -DskipTests
 
 # ---- runtime stage -----------------------------------------------------------
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:25-jre-alpine
 WORKDIR /app
 
 # Run unprivileged. A container that does not need root should not have it.

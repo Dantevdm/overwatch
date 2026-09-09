@@ -21,7 +21,15 @@ cd overwatch
 docker compose up
 ```
 
-That is the whole setup. The stack comes up with a seeded rule set, a simulator
+That is the whole setup. Docker is the only prerequisite — the build runs inside the
+container, so no local JDK or Maven is needed.
+
+To build outside Docker you need **JDK 25** and Maven 3.9+:
+
+```bash
+java -version      # expect 25.x
+mvn clean package
+``` The stack comes up with a seeded rule set, a simulator
 already producing transactions, and Grafana dashboards already provisioned.
 
 | Surface | URL |
@@ -189,7 +197,7 @@ overwatch/
 
 | Choice | Why |
 |---|---|
-| Java 21 + Spring Boot 3.3 | Records, pattern matching and virtual threads; the ecosystem's defaults for Kafka, JPA and metrics are all first-party. |
+| Java 25 (LTS) + Spring Boot 4.1 | Records and pattern matching carry the domain model; virtual threads suit the engine's per-transaction concurrency. Both are current LTS/supported lines rather than trailing ones. |
 | Redpanda | Kafka API compatible, single binary, no ZooKeeper. Same code, a fraction of the container footprint. |
 | PostgreSQL 16 | JSONB makes rule parameters schemaless without giving up relational integrity for everything else. |
 | React 18 + Vite | Fast dev loop, no framework overhead for what is a dashboard. |

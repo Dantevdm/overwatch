@@ -174,6 +174,21 @@ adding one class that implements `FraudRule` — no schema migration.
 
 ---
 
+## Decisions taken
+
+Recorded because the reasoning matters more than the choice.
+
+**JDK 25 + Spring Boot 4.1.1** (2026-09-09). Moving to Java 25 forced a Spring Boot
+upgrade: 3.3.4 predates Java 25 support, which begins at 3.5.5. That left a choice
+between 3.5.16 and 4.1.1 — and 3.5.16 was announced as the final OSS release of the
+3.5.x line, so the conservative option was also the end-of-life one. We took 4.1.1
+because the migration cost is near zero at this point in the build (three boilerplate
+application classes and some YAML, no business logic yet), and because shipping on a
+supported line is easier to defend than shipping on a branch that stopped receiving
+open-source releases three months ago. `springdoc-openapi` moves to 3.1.1 to match.
+
+---
+
 ## Deferred decisions
 
 Decisions consciously postponed. Each is recorded with the reason, so none of them
