@@ -1,4 +1,4 @@
-package com.overwatch.engine.persistence.entity;
+package com.overwatch.common.persistence;
 
 import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;

@@ -23,6 +23,14 @@
             <groupId>com.fasterxml.jackson.datatype</groupId>
             <artifactId>jackson-datatype-jsr310</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+            <!-- The shared persistence model lives here so the engine's write side
+                 and the API's read side cannot drift apart. Provided scope: each
+                 service brings its own runtime and datasource. -->
+            <scope>provided</scope>
+        </dependency>
     </dependencies>
 
     <build>

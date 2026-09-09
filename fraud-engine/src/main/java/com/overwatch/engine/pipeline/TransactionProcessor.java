@@ -3,7 +3,7 @@ package com.overwatch.engine.pipeline;
 import com.overwatch.common.Topics;
 import com.overwatch.common.domain.*;
 import com.overwatch.engine.config.RuleConfigProvider;
-import com.overwatch.engine.persistence.entity.*;
+import com.overwatch.common.persistence.*;
 import com.overwatch.engine.persistence.repository.*;
 import com.overwatch.engine.rule.RuleEngine;
 import com.overwatch.engine.rule.TransactionHistory;

@@ -44,6 +44,13 @@
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
         </dependency>
+        <dependency>
+            <!-- The replay endpoint runs the real rule implementations, not a
+                 reimplementation of them. A what-if answer computed by different
+                 code from the one in production is worse than no answer. -->
+            <groupId>com.overwatch</groupId>
+            <artifactId>rule-engine</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

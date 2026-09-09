@@ -1,6 +1,6 @@
 package com.overwatch.engine.persistence.repository;
 
-import com.overwatch.engine.persistence.entity.FraudRuleEntity;
+import com.overwatch.common.persistence.FraudRuleEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;

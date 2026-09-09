@@ -1,4 +1,4 @@
-package com.overwatch.engine.persistence.entity;
+package com.overwatch.common.persistence;
 
 import jakarta.persistence.*;
 
@@ -65,6 +65,15 @@ public class FraudAlertEntity {
         hits.add(hit);
         hit.setAlert(this);
     }
+
+    /**
+     * Analyst disposition is the one field anything other than the engine writes.
+     * CONFIRMED and CLEARED are what make a per-rule false-positive rate
+     * computable at all.
+     */
+    public void setStatus(String status) { this.status = status; }
+
+    public void setResolvedAt(Instant resolvedAt) { this.resolvedAt = resolvedAt; }
 
     public UUID getId() { return id; }
     public UUID getTransactionId() { return transactionId; }

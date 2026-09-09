@@ -3,7 +3,6 @@ package com.overwatch.engine.rule;
 import com.overwatch.common.domain.Evaluation;
 import com.overwatch.common.domain.RuleHit;
 import com.overwatch.common.domain.Transaction;
-import com.overwatch.engine.config.RuleConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;

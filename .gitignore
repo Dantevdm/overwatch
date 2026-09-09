@@ -43,3 +43,7 @@ prometheus-data/
 # OS
 .DS_Store
 Thumbs.db
+
+# Files the cloud session could not delete (no delete permission on the mount).
+# Safe to remove: rm -rf _to_delete
+_to_delete/

@@ -6,12 +6,14 @@ WORKDIR /build
 # source code then rebuilds in seconds instead of re-downloading the world.
 COPY pom.xml .
 COPY common/pom.xml common/
+COPY rule-engine/pom.xml rule-engine/
 COPY transaction-simulator/pom.xml transaction-simulator/
 COPY fraud-engine/pom.xml fraud-engine/
 COPY fraud-api/pom.xml fraud-api/
 RUN mvn -B -q dependency:go-offline -pl common,fraud-engine -am
 
 COPY common/src common/src
+COPY rule-engine/src rule-engine/src
 COPY fraud-engine/src fraud-engine/src
 RUN mvn -B -q clean package -pl common,fraud-engine -am -DskipTests
 

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.overwatch</groupId>
+        <artifactId>overwatch</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>rule-engine</artifactId>
+    <name>Overwatch :: Rule Engine</name>
+    <description>
+        The fraud rules and the orchestrator that runs them.
+
+        A library rather than a service, because two services need it: the engine
+        evaluates rules forward against live traffic, and the API replays them
+        backward against history for what-if analysis. A replay computed by a
+        reimplementation of the rules would be worse than no replay at all.
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.overwatch</groupId>
+            <artifactId>common</artifactId>
+        </dependency>
+        <!-- Only for @Component discovery. The rules themselves depend on nothing
+             but the JDK, which is what keeps them unit-testable without Spring. -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration><skip>true</skip></configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

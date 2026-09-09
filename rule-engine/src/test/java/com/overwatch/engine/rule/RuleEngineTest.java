@@ -5,7 +5,6 @@ import com.overwatch.common.domain.Evaluation;
 import com.overwatch.common.domain.RuleState;
 import com.overwatch.common.domain.Severity;
 import com.overwatch.common.domain.Transaction;
-import com.overwatch.engine.config.RuleConfig;
 import com.overwatch.engine.rule.impl.*;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

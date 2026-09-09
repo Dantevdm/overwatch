@@ -1,9 +1,10 @@
 package com.overwatch.engine.config;
 
 import com.overwatch.common.domain.RuleState;
-import com.overwatch.engine.persistence.entity.FraudRuleEntity;
+import com.overwatch.common.persistence.FraudRuleEntity;
 import com.overwatch.engine.persistence.repository.FraudRuleRepository;
 import com.overwatch.engine.rule.RuleParameters;
+import com.overwatch.engine.rule.RuleConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;

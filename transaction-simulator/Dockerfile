@@ -6,6 +6,7 @@ WORKDIR /build
 # source code then rebuilds in seconds instead of re-downloading the world.
 COPY pom.xml .
 COPY common/pom.xml common/
+COPY rule-engine/pom.xml rule-engine/
 COPY transaction-simulator/pom.xml transaction-simulator/
 COPY fraud-engine/pom.xml fraud-engine/
 COPY fraud-api/pom.xml fraud-api/

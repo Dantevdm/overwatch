@@ -20,6 +20,10 @@
             <artifactId>common</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.overwatch</groupId>
+            <artifactId>rule-engine</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>

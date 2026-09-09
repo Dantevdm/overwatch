@@ -1,4 +1,4 @@
-package com.overwatch.engine.config;
+package com.overwatch.engine.rule;
 
 import com.overwatch.common.domain.RuleState;
 import com.overwatch.engine.rule.RuleParameters;
