@@ -136,6 +136,22 @@ jobs:
           fi
           echo "Schema and constraints verified."
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Verify entity mappings against the schema
+        env:
+          PGPASSWORD: overwatch
+        run: |
+          # Hibernate runs ddl-auto: validate, so an entity that disagrees with
+          # the migration stops the service at startup — one mismatched column
+          # at a time, minutes apart. This reports all of them at once, here.
+          pip install --quiet psycopg2-binary
+          ./scripts/verify-schema-mapping.py \
+            --dsn "postgresql://overwatch:overwatch@localhost:5432/overwatch"
+
   # ---------------------------------------------------------------------------
   # Build the images and run the whole stack, then smoke-test it. This is the
   # job that catches packaging and wiring faults a unit test never will.

@@ -4,6 +4,11 @@
 -- those rules produced. Shadow-rule output lives in its own table because a
 -- shadow hit deliberately has no alert to hang off — see shadow_rule_hits.
 
+-- Fixed-width codes use VARCHAR, not CHAR. Two reasons: Hibernate maps a
+-- String @Column(length = n) to varchar and rejects bpchar under
+-- ddl-auto: validate, and PostgreSQL's CHAR pads values to the declared width,
+-- so a two-letter code in CHAR(3) silently becomes 'ZA ' on the way back out.
+
 -- ---------------------------------------------------------------------------
 -- Transactions
 -- ---------------------------------------------------------------------------
@@ -11,10 +16,10 @@ CREATE TABLE transactions (
     id                UUID           PRIMARY KEY,
     card_id           VARCHAR(64)    NOT NULL,
     amount            NUMERIC(15, 2) NOT NULL,
-    currency          CHAR(3)        NOT NULL DEFAULT 'ZAR',
+    currency          VARCHAR(3)     NOT NULL DEFAULT 'ZAR',
     merchant_name     VARCHAR(255)   NOT NULL,
     merchant_category VARCHAR(64)    NOT NULL,
-    country_code      CHAR(2)        NOT NULL,
+    country_code      VARCHAR(2)     NOT NULL,
     channel           VARCHAR(16)    NOT NULL,
     occurred_at       TIMESTAMPTZ    NOT NULL,
     metadata          JSONB          NOT NULL DEFAULT '{}'::JSONB,
@@ -75,7 +80,7 @@ CREATE TABLE fraud_alerts (
     status         VARCHAR(16)    NOT NULL DEFAULT 'OPEN',
     -- Denormalised from the transaction so alert lists need no join.
     amount         NUMERIC(15, 2) NOT NULL,
-    currency       CHAR(3)        NOT NULL,
+    currency       VARCHAR(3)     NOT NULL,
     created_at     TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
     resolved_at    TIMESTAMPTZ,
 
