@@ -34,7 +34,12 @@
         <springdoc.version>3.1.1</springdoc.version>
 
         <!-- Quality tooling -->
-        <jacoco.version>0.8.12</jacoco.version>
+        <!-- 0.8.13 is the first release that reads Java 25 bytecode. 0.8.12
+             aborts on "Unsupported class file major version 69" while
+             instrumenting, which fails `verify` on every module — the same
+             lag documented for SpotBugs and PMD below, so all three analysers
+             are pinned forward deliberately rather than left to defaults. -->
+        <jacoco.version>0.8.13</jacoco.version>
         <spotbugs.plugin.version>4.10.4.0</spotbugs.plugin.version>
         <!-- Pinned explicitly, not left to whatever the plugin bundles. Static
              analysers lag new JDKs: SpotBugs before 4.10 cannot read Java 25

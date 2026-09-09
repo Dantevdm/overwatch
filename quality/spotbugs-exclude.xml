@@ -25,6 +25,34 @@
         <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
     </Match>
 
+    <!-- Spring-injected collaborators. Storing the KafkaTemplate, MeterRegistry
+         or service bean the container hands in IS constructor injection, and
+         these are container-managed singletons: copying one defensively is
+         neither possible nor meaningful. Scoped to the packages that actually
+         hold Spring beans, so a genuine mutable array kept in a value object
+         still fails the gate. -->
+    <Match>
+        <Or>
+            <Package name="~com\.overwatch\.simulator\.(api|service|generate)"/>
+            <Package name="~com\.overwatch\.engine\.(pipeline|config|persistence).*"/>
+            <Package name="~com\.overwatch\.api\.(web|service|repository|simulator)"/>
+        </Or>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
+
+    <!-- The simulator's entire job is manufacturing synthetic traffic, and it
+         seeds java.util.Random deliberately so a run is reproducible — the
+         plan calls for deterministic-under-a-seed generation precisely so a
+         test failure can be replayed. No key, token, password or security
+         decision derives from these draws; find-sec-bugs cannot tell a
+         fake-data generator from a key generator. Scoped to the simulator, so
+         PREDICTABLE_RANDOM remains a real finding anywhere a drawn value
+         could actually matter. -->
+    <Match>
+        <Package name="~com\.overwatch\.simulator.*"/>
+        <Bug pattern="PREDICTABLE_RANDOM"/>
+    </Match>
+
     <!-- Spring Boot application classes are framework entry points. -->
     <Match>
         <Class name="~.*Application"/>
