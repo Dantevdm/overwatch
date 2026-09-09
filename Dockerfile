@@ -22,12 +22,20 @@ COPY transaction-simulator/pom.xml transaction-simulator/
 COPY fraud-engine/pom.xml          fraud-engine/
 COPY fraud-api/pom.xml             fraud-api/
 
-# `go-offline` is deliberately not used. It resolves every plugin for every
-# profile — far more than a build needs — and was the single largest cost here.
-# Letting the build download what it actually uses, into a cache that persists,
-# is both faster and more honest about the dependency set.
+# Retry settings for every Maven invocation here — Central drops handshakes.
+COPY .mvn .mvn
+
+# A cache warm-up, not the authoritative step. `go-offline` is deliberately not
+# used: it resolves every plugin for every profile, far more than a build needs,
+# and was the single largest cost here.
+#
+# Resolution is serial on purpose. Parallel resolution opens many simultaneous
+# connections to Maven Central, which is exactly what provokes the dropped
+# handshakes this step used to fail on. The package step below is authoritative
+# and fetches anything missing, so a flake here must not fail the build.
 RUN --mount=type=cache,target=/root/.m2 \
-    mvn -B -q -T 1C dependency:resolve
+    mvn -B -q dependency:resolve \
+      || echo 'Dependency warm-up incomplete — the package step will fetch the rest.'
 
 COPY common/src                common/src
 COPY rule-engine/src           rule-engine/src
@@ -39,7 +47,7 @@ COPY fraud-api/src             fraud-api/src
 # an image build that runs the test suite makes `docker compose up` slow for
 # everyone, every time, to re-prove what CI already proved on the commit.
 RUN --mount=type=cache,target=/root/.m2 \
-    mvn -B -q -T 1C clean package -DskipTests
+    mvn -B -q clean package -DskipTests
 
 # Fail loudly, here, if any jar is not an executable Spring Boot archive.
 # A repackaged jar contains the Boot loader; a plain library jar does not, and
