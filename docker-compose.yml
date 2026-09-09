@@ -59,6 +59,39 @@ services:
       start_period: 20s
     restart: unless-stopped
 
+  # Redpanda Console — the broker's own web UI.
+  #
+  # Worth a container because the streaming step is the one part of this pipeline
+  # you otherwise have to take on faith: transactions go into a topic and alerts
+  # come out, and without this there is nothing to look at in between. Here you
+  # can read the actual JSON on `transactions` and `fraud-alerts`, see the
+  # partitions, and watch the engine's consumer group lag move.
+  #
+  # Read-only by default: no topic creation or deletion, no message publishing.
+  # It is a window onto the broker for a demonstration, not an admin console, and
+  # nothing here authenticates.
+  redpanda-console:
+    image: redpandadata/console:v2.7.2
+    container_name: ow-redpanda-console
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+      # Deserialise the message values as JSON so the console shows a readable
+      # transaction rather than a base64 blob.
+      KAFKA_TOPICDOCUMENTATION_ENABLED: "false"
+      CONSOLE_TOPICDOCUMENTATION_ENABLED: "false"
+    ports:
+      - "${OW_CONSOLE_PORT:-8090}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/admin/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+
   # ---- application ----------------------------------------------------------
 
   fraud-engine:
@@ -140,12 +173,26 @@ services:
       context: ./overwatch-ui
     container_name: ow-ui
     environment:
+      # Proxy target for the Vite dev server, resolved INSIDE this container —
+      # so it is a compose hostname, not a host port. Do not confuse it with
+      # VITE_API_PUBLIC_URL below: pointing this at localhost breaks every API
+      # call in the app, because localhost inside this container is this
+      # container.
       VITE_API_URL: http://fraud-api:8080
       # Browser-side URL, so this is a host port rather than a compose hostname:
       # the iframe is loaded by the reviewer's browser, which cannot resolve
       # "grafana". Follows the preflight override so a reassigned Grafana port
       # still frames correctly.
       VITE_GRAFANA_URL: http://localhost:${OW_GRAFANA_PORT:-3000}
+      # The rest of the stack's own web UIs, linked from the sidebar. Same
+      # reasoning: browser-side URLs, following any preflight reassignment, so
+      # the links work rather than pointing at a port the stack is not on.
+      VITE_PROMETHEUS_URL: http://localhost:${OW_PROMETHEUS_PORT:-9090}
+      VITE_CONSOLE_URL: http://localhost:${OW_CONSOLE_PORT:-8090}
+      # The API as the *browser* reaches it, for the Swagger link. Deliberately
+      # a different name from VITE_API_URL above, which the dev server resolves
+      # inside the container.
+      VITE_API_PUBLIC_URL: http://localhost:${OW_API_PORT:-8080}
     ports:
       - "${OW_UI_PORT:-5173}:5173"
     depends_on:

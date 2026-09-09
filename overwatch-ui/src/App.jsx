@@ -7,6 +7,7 @@ import Rules from './pages/Rules.jsx';
 import Simulator from './pages/Simulator.jsx';
 import Metrics from './pages/Metrics.jsx';
 import ResetData from './components/ResetData.jsx';
+import ExternalTools from './components/ExternalTools.jsx';
 import { api } from './api.js';
 
 const NAV = [
@@ -49,6 +50,9 @@ function Shell() {
       <aside style={{
         width: 'var(--sidebar-w)', background: 'var(--side-bg)', color: 'var(--side-fg)',
         flexShrink: 0, position: 'sticky', top: 0, height: '100vh',
+        // Column, so the navigation takes the slack and the external tools stay
+        // at the bottom whatever the viewport height.
+        display: 'flex', flexDirection: 'column',
       }}>
         <div style={{
           height: 'var(--topbar-h)', display: 'flex', alignItems: 'center', gap: 10,
@@ -62,7 +66,7 @@ function Shell() {
           Overwatch
         </div>
 
-        <nav style={{ padding: 'var(--space-2)' }}>
+        <nav style={{ padding: 'var(--space-2)', flex: 1, minHeight: 0, overflowY: 'auto' }}>
           {NAV.map((item) => (
             <NavLink key={item.to} to={item.to} style={({ isActive }) => ({
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -85,6 +89,8 @@ function Shell() {
             </NavLink>
           ))}
         </nav>
+
+        <ExternalTools />
       </aside>
 
       <main style={{ flex: 1, minWidth: 0 }}>

@@ -13,17 +13,12 @@ help: ## Show this help
 preflight: ## Check host ports, write .env overrides for any conflicts
 	./scripts/preflight.sh --write || true
 
+# Delegates to preflight, which is the one place that knows how to turn the
+# resolved ports into URLs. This target used to keep its own copy of that logic
+# and the copy drifted: it was still printing four URLs after the stack grew a
+# fifth published port.
 urls: ## Print the URLs for this machine, honouring any .env overrides
-	@./scripts/preflight.sh >/dev/null 2>&1 || true
-	@sh -c 'api=$$(grep -E "^OW_API_PORT=" .env 2>/dev/null | cut -d= -f2); api=$${api:-8080}; \
-	  ui=$$(grep -E "^OW_UI_PORT=" .env 2>/dev/null | cut -d= -f2); ui=$${ui:-5173}; \
-	  prom=$$(grep -E "^OW_PROMETHEUS_PORT=" .env 2>/dev/null | cut -d= -f2); prom=$${prom:-9090}; \
-	  graf=$$(grep -E "^OW_GRAFANA_PORT=" .env 2>/dev/null | cut -d= -f2); graf=$${graf:-3000}; \
-	  printf "\n  Dashboard    http://localhost:%s\n" "$$ui"; \
-	  printf "  API docs     http://localhost:%s/swagger-ui.html\n" "$$api"; \
-	  printf "  API health   http://localhost:%s/actuator/health\n" "$$api"; \
-	  printf "  Grafana      http://localhost:%s\n" "$$graf"; \
-	  printf "  Prometheus   http://localhost:%s/targets\n\n" "$$prom"'
+	@./scripts/preflight.sh --urls
 
 up: preflight ## Resolve ports, then build and start the stack
 	docker compose up --build

@@ -5,6 +5,7 @@
 #
 #   ./scripts/preflight.sh          # report only
 #   ./scripts/preflight.sh --write  # write a .env that avoids the conflicts
+#   ./scripts/preflight.sh --urls   # print just the URLs in effect, nothing else
 #
 # Run this before `docker compose up` to find every collision at once, instead
 # of discovering them one container at a time.
@@ -13,10 +14,12 @@ set -uo pipefail
 
 WRITE=0
 TOOLS=0
+URLS_ONLY=0
 for arg in "$@"; do
   case "$arg" in
     --write) WRITE=1 ;;
     --tools) TOOLS=1 ;;
+    --urls)  URLS_ONLY=1 ;;
   esac
 done
 
@@ -27,13 +30,14 @@ else
 fi
 
 # var:default:description
-# The base stack publishes only these four. Everything else stays inside the
+# The base stack publishes only these five. Everything else stays inside the
 # compose network, which is why it cannot collide with anything on your host.
 PORTS=(
   "OW_API_PORT:8080:Fraud API"
   "OW_UI_PORT:5173:Dashboard UI"
   "OW_PROMETHEUS_PORT:9090:Prometheus"
   "OW_GRAFANA_PORT:3000:Grafana"
+  "OW_CONSOLE_PORT:8090:Redpanda Console"
 )
 
 # Published only by docker-compose.tools.yml. Checked when --tools is passed.
@@ -74,11 +78,12 @@ next_free() { # next_free <start> — first port at or above start that is neith
 
 # Reads the values that will actually be in effect.
 print_urls() {
-  local api ui prom graf
+  local api ui prom graf cons
   api=$(  grep -E '^OW_API_PORT='        .env 2>/dev/null | cut -d= -f2); api=${api:-8080}
   ui=$(   grep -E '^OW_UI_PORT='         .env 2>/dev/null | cut -d= -f2); ui=${ui:-5173}
   prom=$( grep -E '^OW_PROMETHEUS_PORT=' .env 2>/dev/null | cut -d= -f2); prom=${prom:-9090}
   graf=$( grep -E '^OW_GRAFANA_PORT='    .env 2>/dev/null | cut -d= -f2); graf=${graf:-3000}
+  cons=$( grep -E '^OW_CONSOLE_PORT='    .env 2>/dev/null | cut -d= -f2); cons=${cons:-8090}
 
   printf '%sYour URLs%s\n' "$B" "$N"
   printf '  Dashboard    http://localhost:%s\n' "$ui"
@@ -86,7 +91,17 @@ print_urls() {
   printf '  API health   http://localhost:%s/actuator/health\n' "$api"
   printf '  Grafana      http://localhost:%s\n' "$graf"
   printf '  Prometheus   http://localhost:%s/targets\n' "$prom"
+  printf '  Broker UI    http://localhost:%s\n' "$cons"
 }
+
+# `make urls` wants the URL list and nothing else. This is the only place the
+# ports are turned into URLs, so the Makefile delegates here rather than keeping
+# its own copy — the duplicate it used to keep had already drifted, and printed a
+# four-line list months after the stack grew a fifth published port.
+if [[ "$URLS_ONLY" -eq 1 ]]; then
+  print_urls
+  exit 0
+fi
 
 printf '%sOverwatch preflight — host port check%s\n\n' "$B" "$N"
 
