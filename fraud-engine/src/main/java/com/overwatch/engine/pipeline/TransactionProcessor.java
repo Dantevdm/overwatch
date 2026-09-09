@@ -7,7 +7,6 @@ import com.overwatch.common.persistence.*;
 import com.overwatch.engine.persistence.repository.*;
 import com.overwatch.engine.rule.RuleEngine;
 import com.overwatch.engine.rule.TransactionHistory;
-import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
@@ -17,7 +16,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.util.List;
 import java.util.UUID;
 
 /**

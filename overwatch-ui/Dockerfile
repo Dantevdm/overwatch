@@ -1,9 +1,11 @@
 FROM node:20-alpine
 WORKDIR /app
 
-# Manifests first so `npm ci` caches independently of source changes.
+# Manifests first so the dependency layer is independent of source changes, and a
+# BuildKit cache mount so npm does not re-download the world on every build.
 COPY package.json package-lock.json* ./
-RUN npm install
+RUN --mount=type=cache,target=/root/.npm \
+    npm install --no-audit --no-fund
 
 COPY . .
 

@@ -16,6 +16,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
+    # CodeQL results can only be uploaded where code scanning is enabled, which on
+    # a private repository requires GitHub Advanced Security. Without it the scan
+    # runs perfectly and then fails on upload, which reports a red build for a
+    # billing setting rather than a code problem. Skipping on private repos keeps
+    # the signal honest: enable code scanning (or make the repo public) and this
+    # starts running on its own, with no edit here.
+    if: github.event.repository.private == false
+
+
     permissions:
       security-events: write   # required to upload results to the Security tab
       packages: read

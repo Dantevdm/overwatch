@@ -63,8 +63,10 @@ services:
 
   fraud-engine:
     build:
+      # One shared builder stage across all three services — see ./Dockerfile.
       context: .
-      dockerfile: fraud-engine/Dockerfile
+      dockerfile: Dockerfile
+      target: fraud-engine
     container_name: ow-fraud-engine
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/overwatch
@@ -88,8 +90,10 @@ services:
 
   fraud-api:
     build:
+      # One shared builder stage across all three services — see ./Dockerfile.
       context: .
-      dockerfile: fraud-api/Dockerfile
+      dockerfile: Dockerfile
+      target: fraud-api
     container_name: ow-fraud-api
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/overwatch
@@ -111,8 +115,10 @@ services:
 
   transaction-simulator:
     build:
+      # One shared builder stage across all three services — see ./Dockerfile.
       context: .
-      dockerfile: transaction-simulator/Dockerfile
+      dockerfile: Dockerfile
+      target: transaction-simulator
     container_name: ow-simulator
     environment:
       KAFKA_BOOTSTRAP_SERVERS: redpanda:9092

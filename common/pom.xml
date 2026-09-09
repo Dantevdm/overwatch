@@ -14,6 +14,12 @@
     <name>Overwatch :: Common</name>
     <description>Shared domain model and event contract</description>
 
+
+    <properties>
+        <!-- Domain logic: severity bands, shadow isolation, score capping. -->
+        <jacoco.line.coverage>0.60</jacoco.line.coverage>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>

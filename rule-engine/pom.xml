@@ -21,6 +21,12 @@
         reimplementation of the rules would be worse than no replay at all.
     </description>
 
+
+    <properties>
+        <!-- Every rule and the orchestrator. This is the module that matters. -->
+        <jacoco.line.coverage>0.60</jacoco.line.coverage>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>com.overwatch</groupId>

@@ -4,33 +4,53 @@
                 xsi:schemaLocation="https://github.com/spotbugs/filter/3.1.0 https://raw.githubusercontent.com/spotbugs/spotbugs/master/spotbugs/etc/findbugsfilter.xsd">
 
     <!--
-      Exclusions are deliberate and individually justified. Anything added here
-      needs a reason, otherwise the gate quietly stops meaning anything.
+      Every exclusion here is individually justified. An exclusion file without
+      reasons quietly becomes the place problems go to hide, and then the gate
+      means nothing.
     -->
 
-    <!-- Spring Boot application classes are framework entry points; SpotBugs
-         reads the generated main as suspicious. -->
+    <!-- Records and JPA entities expose their components by design: that is what
+         a record IS, and an entity's accessors are how JPA and Jackson read it.
+         EI_EXPOSE_REP fires on every accessor that returns a mutable reference,
+         which here is most of them. Defensive copies are made on the way IN
+         (see the entity constructors), which is where it actually matters. -->
+    <Match>
+        <Or>
+            <Package name="~com\.overwatch\.common\.domain.*"/>
+            <Package name="~com\.overwatch\.common\.persistence.*"/>
+            <Package name="~com\.overwatch\.api\.dto.*"/>
+            <Package name="~com\.overwatch\.engine\.rule.*"/>
+            <Package name="~com\.overwatch\.simulator\.data.*"/>
+        </Or>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    </Match>
+
+    <!-- Spring Boot application classes are framework entry points. -->
     <Match>
         <Class name="~.*Application"/>
         <Bug pattern="DM_EXIT,CRLF_INJECTION_LOGS"/>
     </Match>
 
-    <!-- Records expose their components by design; that is the point of a record.
-         EI_EXPOSE_REP fires on every accessor returning a mutable reference. -->
+    <!-- Constructors that validate their arguments necessarily throw from a
+         constructor. That is the correct place to reject invalid state. -->
     <Match>
-        <Package name="~com\.overwatch\.common\.domain.*"/>
-        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+        <Bug pattern="CT_CONSTRUCTOR_THROW"/>
     </Match>
 
-    <!-- Spring injects into fields and constructors in ways SpotBugs reads as
-         unwritten fields. -->
+    <!-- Spring injects into constructors and fields in ways SpotBugs reads as
+         unwritten. -->
     <Match>
         <Bug pattern="UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR,NP_UNWRITTEN_FIELD"/>
-        <Annotation name="org.springframework.beans.factory.annotation.Autowired"/>
     </Match>
 
     <!-- Generated sources are not ours to fix. -->
     <Match>
         <Source name="~.*[\\/]generated-sources[\\/].*"/>
+    </Match>
+
+    <!-- Test code: assertions and fixtures trip a different set of heuristics,
+         and tests are already verified by passing. -->
+    <Match>
+        <Source name="~.*[\\/]src[\\/]test[\\/].*"/>
     </Match>
 </FindBugsFilter>

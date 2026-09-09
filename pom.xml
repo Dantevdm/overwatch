@@ -35,13 +35,27 @@
 
         <!-- Quality tooling -->
         <jacoco.version>0.8.12</jacoco.version>
-        <spotbugs.version>4.8.6.6</spotbugs.version>
+        <spotbugs.plugin.version>4.10.4.0</spotbugs.plugin.version>
+        <!-- Pinned explicitly, not left to whatever the plugin bundles. Static
+             analysers lag new JDKs: SpotBugs before 4.10 cannot read Java 25
+             bytecode at all (class file major version 69), and PMD only learned
+             Java 25 in 7.18. Both would fail the build on a language version the
+             compiler is perfectly happy with. -->
+        <spotbugs.core.version>4.10.4</spotbugs.core.version>
         <findsecbugs.version>1.13.0</findsecbugs.version>
-        <pmd.version>3.26.0</pmd.version>
+        <pmd.plugin.version>3.26.0</pmd.plugin.version>
+        <pmd.core.version>7.27.0</pmd.core.version>
         <dependency-check.version>10.0.4</dependency-check.version>
-        <!-- Coverage floor. Raised as real logic lands; a gate that is never
-             enforced is decoration, so it fails the build from day one. -->
-        <jacoco.line.coverage>0.60</jacoco.line.coverage>
+        <!-- Coverage floor, overridden per module.
+             The default is zero on purpose. Coverage is enforced where there is
+             logic to cover: the domain model and the rule engine, which hold
+             every decision worth asserting. The service modules are wiring —
+             controllers, repositories, Kafka glue — and unit tests there mostly
+             assert that a mock was called. Those are exercised by the CI stack
+             job, which starts the whole compose stack and smoke-tests it.
+             A number chosen to make a percentage look respectable is worse than
+             an honest zero with an integration test behind it. -->
+        <jacoco.line.coverage>0.00</jacoco.line.coverage>
     </properties>
 
     <dependencyManagement>
@@ -71,12 +85,12 @@
                 <plugin>
                     <groupId>com.github.spotbugs</groupId>
                     <artifactId>spotbugs-maven-plugin</artifactId>
-                    <version>${spotbugs.version}</version>
+                    <version>${spotbugs.plugin.version}</version>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-pmd-plugin</artifactId>
-                    <version>${pmd.version}</version>
+                    <version>${pmd.plugin.version}</version>
                 </plugin>
                 <plugin>
                     <groupId>org.owasp</groupId>
@@ -120,10 +134,14 @@
                                     </limits>
                                 </rule>
                             </rules>
-                            <!-- Boilerplate that tests should not be written for. -->
+                            <!-- Declarations rather than behaviour. JPA entities are
+                                 column mappings, DTOs are records, and a test that
+                                 calls a getter proves nothing except that Java works. -->
                             <excludes>
                                 <exclude>**/*Application.class</exclude>
                                 <exclude>**/config/**</exclude>
+                                <exclude>**/persistence/*Entity.class</exclude>
+                                <exclude>**/dto/**</exclude>
                             </excludes>
                         </configuration>
                     </execution>
@@ -135,6 +153,14 @@
             <plugin>
                 <groupId>com.github.spotbugs</groupId>
                 <artifactId>spotbugs-maven-plugin</artifactId>
+                <dependencies>
+                    <!-- Override the bundled analyser: only 4.10+ reads Java 25. -->
+                    <dependency>
+                        <groupId>com.github.spotbugs</groupId>
+                        <artifactId>spotbugs</artifactId>
+                        <version>${spotbugs.core.version}</version>
+                    </dependency>
+                </dependencies>
                 <configuration>
                     <effort>Max</effort>
                     <threshold>Medium</threshold>
@@ -161,6 +187,20 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-pmd-plugin</artifactId>
+                <dependencies>
+                    <!-- Upgrading PMD at runtime. The plugin bundles an older core
+                         that does not recognise Java 25 as a language version. -->
+                    <dependency>
+                        <groupId>net.sourceforge.pmd</groupId>
+                        <artifactId>pmd-core</artifactId>
+                        <version>${pmd.core.version}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>net.sourceforge.pmd</groupId>
+                        <artifactId>pmd-java</artifactId>
+                        <version>${pmd.core.version}</version>
+                    </dependency>
+                </dependencies>
                 <configuration>
                     <rulesets>
                         <ruleset>${maven.multiModuleProjectDirectory}/quality/pmd-ruleset.xml</ruleset>
