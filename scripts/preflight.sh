@@ -12,7 +12,13 @@
 set -uo pipefail
 
 WRITE=0
-[[ "${1:-}" == "--write" ]] && WRITE=1
+TOOLS=0
+for arg in "$@"; do
+  case "$arg" in
+    --write) WRITE=1 ;;
+    --tools) TOOLS=1 ;;
+  esac
+done
 
 if [[ -t 1 ]]; then
   G=$'\033[32m'; R=$'\033[31m'; Y=$'\033[33m'; B=$'\033[1m'; N=$'\033[0m'
@@ -21,15 +27,21 @@ else
 fi
 
 # var:default:description
+# The base stack publishes only these four. Everything else stays inside the
+# compose network, which is why it cannot collide with anything on your host.
 PORTS=(
-  "OW_PG_PORT:5432:PostgreSQL"
-  "OW_KAFKA_PORT:19092:Redpanda Kafka API"
   "OW_API_PORT:8080:Fraud API"
-  "OW_SIMULATOR_PORT:8081:Transaction simulator"
-  "OW_ENGINE_PORT:8082:Fraud engine"
   "OW_UI_PORT:5173:Dashboard UI"
   "OW_PROMETHEUS_PORT:9090:Prometheus"
   "OW_GRAFANA_PORT:3000:Grafana"
+)
+
+# Published only by docker-compose.tools.yml. Checked when --tools is passed.
+TOOLS_PORTS=(
+  "OW_PG_PORT:5432:PostgreSQL"
+  "OW_KAFKA_PORT:19092:Redpanda Kafka API"
+  "OW_SIMULATOR_PORT:8081:Transaction simulator"
+  "OW_ENGINE_PORT:8082:Fraud engine"
 )
 
 # Portable listener check: bash's /dev/tcp works on macOS and Linux without lsof.
@@ -54,6 +66,8 @@ printf '%sOverwatch preflight — host port check%s\n\n' "$B" "$N"
 
 conflicts=0
 declare -a OVERRIDES=()
+
+[[ "$TOOLS" -eq 1 ]] && PORTS+=("${TOOLS_PORTS[@]}")
 
 for entry in "${PORTS[@]}"; do
   IFS=':' read -r var def desc <<< "$entry"

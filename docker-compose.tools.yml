@@ -1,0 +1,31 @@
+# Optional overlay: publishes the internal services to the host.
+#
+# The base stack keeps Postgres, Redpanda, the engine and the simulator inside
+# the compose network, because nothing outside it needs them — Prometheus
+# scrapes over Docker DNS. That keeps the host port surface to the four things
+# a person actually opens.
+#
+# Use this overlay when you want to point external tooling at them: DBeaver at
+# Postgres, rpk or Postman at Kafka, or curl at a service's actuator directly.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.tools.yml up
+#   make up-tools
+#
+# Every port is overridable, same as the base stack.
+
+services:
+  postgres:
+    ports:
+      - "${OW_PG_PORT:-5432}:5432"
+
+  redpanda:
+    ports:
+      - "${OW_KAFKA_PORT:-19092}:19092"
+
+  fraud-engine:
+    ports:
+      - "${OW_ENGINE_PORT:-8082}:8082"
+
+  transaction-simulator:
+    ports:
+      - "${OW_SIMULATOR_PORT:-8081}:8081"

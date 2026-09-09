@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter xmlns="https://github.com/spotbugs/filter/3.1.0"
+                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                xsi:schemaLocation="https://github.com/spotbugs/filter/3.1.0 https://raw.githubusercontent.com/spotbugs/spotbugs/master/spotbugs/etc/findbugsfilter.xsd">
+
+    <!--
+      Exclusions are deliberate and individually justified. Anything added here
+      needs a reason, otherwise the gate quietly stops meaning anything.
+    -->
+
+    <!-- Spring Boot application classes are framework entry points; SpotBugs
+         reads the generated main as suspicious. -->
+    <Match>
+        <Class name="~.*Application"/>
+        <Bug pattern="DM_EXIT,CRLF_INJECTION_LOGS"/>
+    </Match>
+
+    <!-- Records expose their components by design; that is the point of a record.
+         EI_EXPOSE_REP fires on every accessor returning a mutable reference. -->
+    <Match>
+        <Package name="~com\.overwatch\.common\.domain.*"/>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    </Match>
+
+    <!-- Spring injects into fields and constructors in ways SpotBugs reads as
+         unwritten fields. -->
+    <Match>
+        <Bug pattern="UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR,NP_UNWRITTEN_FIELD"/>
+        <Annotation name="org.springframework.beans.factory.annotation.Autowired"/>
+    </Match>
+
+    <!-- Generated sources are not ours to fix. -->
+    <Match>
+        <Source name="~.*[\\/]generated-sources[\\/].*"/>
+    </Match>
+</FindBugsFilter>

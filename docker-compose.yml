@@ -20,8 +20,8 @@ services:
       POSTGRES_DB: overwatch
       POSTGRES_USER: overwatch
       POSTGRES_PASSWORD: overwatch
-    ports:
-      - "${OW_PG_PORT:-5432}:5432"
+    # No host binding. Only the engine and API talk to Postgres, and they do so
+    # over the compose network. docker-compose.tools.yml exposes it for DBeaver.
     volumes:
       # Schema is owned by Flyway, not by entrypoint init scripts — migrations
       # then run identically on a fresh volume, an existing one, and in CI.
@@ -47,11 +47,8 @@ services:
       # 'external' for tools running on the host.
       - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
       - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
-    ports:
-      # Kafka API, for host tools (rpk, kafkacat, Postman). The admin API on 9644
-      # is deliberately not published: the health check runs rpk inside the
-      # container, so exposing it only invites a port collision.
-      - "${OW_KAFKA_PORT:-19092}:19092"
+    # No host binding. Services reach the broker over the compose network as
+    # redpanda:9092. Use docker-compose.tools.yml to expose it to host tooling.
     volumes:
       - redpanda-data:/var/lib/redpanda/data
     healthcheck:
@@ -74,8 +71,8 @@ services:
       DB_USER: overwatch
       DB_PASSWORD: overwatch
       KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
-    ports:
-      - "${OW_ENGINE_PORT:-8082}:8082"
+    # No host binding. Prometheus scrapes fraud-engine:8082 inside the network,
+    # and nothing else needs to reach it.
     depends_on:
       postgres:
         condition: service_healthy
@@ -119,8 +116,8 @@ services:
     container_name: ow-simulator
     environment:
       KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
-    ports:
-      - "${OW_SIMULATOR_PORT:-8081}:8081"
+    # No host binding. Prometheus scrapes transaction-simulator:8081 inside the
+    # network.
     depends_on:
       redpanda:
         condition: service_healthy

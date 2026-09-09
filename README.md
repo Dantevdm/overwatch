@@ -18,8 +18,11 @@ timestamps — because rules can only be judged sensible against data that looks
 ```bash
 git clone <repo-url> overwatch
 cd overwatch
-docker compose up
+make up
 ```
+
+`make up` resolves any host port conflicts first, then starts the stack. Plain
+`docker compose up` works too if your ports happen to be free.
 
 That is the whole setup. Docker is the only prerequisite — the build runs inside the
 container, so no local JDK or Maven is needed.
@@ -43,20 +46,41 @@ Once it is up, `./scripts/smoke-test.sh` verifies the stack is wired together �
 service health, metrics endpoints, Prometheus targets, Grafana provisioning and
 broker/database connectivity.
 
-### Port conflicts
+### Ports
 
-Every host port is configurable. If one collides with something already running —
-a local Postgres on 5432 is the usual culprit — copy `.env.example` to `.env` and
-change the offending line:
+The stack publishes exactly four ports — the four things a person opens. Postgres,
+Redpanda, the fraud engine and the simulator stay inside the compose network,
+because nothing outside it needs them: Prometheus scrapes over Docker DNS. Fewer
+published ports means fewer things that can collide with whatever else is running
+on your machine.
+
+`make up` runs `scripts/preflight.sh` first, which checks those four, picks a free
+alternative for any that are taken, and writes the overrides to `.env`. You should
+never have to think about it. To check without starting anything:
 
 ```bash
-cp .env.example .env
-# edit OW_PG_PORT=5433, then
-docker compose up
+./scripts/preflight.sh          # report
+./scripts/preflight.sh --write  # report and write .env
 ```
 
-Only the host side moves; ports inside the compose network are fixed, so nothing
-else needs to change.
+If you want to point external tooling at the internal services — DBeaver at
+Postgres, `rpk` or Postman at Kafka — the tools overlay publishes them:
+
+```bash
+make up-tools    # or: docker compose -f docker-compose.yml -f docker-compose.tools.yml up
+```
+
+### Common tasks
+
+| Command | What it does |
+|---|---|
+| `make up` | Resolve ports, build and start the stack |
+| `make up-tools` | Same, plus publish Postgres, Kafka, engine and simulator |
+| `make down` | Stop, keeping data |
+| `make clean` | Stop and drop volumes — Flyway re-runs from scratch |
+| `make smoke` | Verify a running stack is wired correctly |
+| `make verify` | Full quality gate — tests, coverage, SpotBugs, PMD |
+| `make logs` | Tail all service logs |
 
 ---
 

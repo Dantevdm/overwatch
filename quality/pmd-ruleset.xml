@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ruleset name="Overwatch"
+         xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.sourceforge.io/ruleset_2_0_0.xsd">
+
+    <description>
+        Rules that catch defects and complexity, not formatting opinions.
+
+        The full PMD "quickstart" set produces enough noise on a Spring codebase
+        that people stop reading it, and a quality gate nobody reads is worse
+        than none. This selects the categories that find real problems and
+        switches off the ones that fight framework conventions.
+    </description>
+
+    <!-- Genuine defects: broken equals/hashCode, resource leaks, misuse of
+         collections, comparison mistakes. -->
+    <rule ref="category/java/errorprone.xml">
+        <!-- Spring injects and JPA requires no-arg constructors; both trip these. -->
+        <exclude name="BeanMembersShouldSerialize"/>
+        <exclude name="MissingSerialVersionUID"/>
+        <!-- Records and DTOs legitimately expose their fields. -->
+        <exclude name="DataflowAnomalyAnalysis"/>
+        <!-- Constants in migrations, seeds and test fixtures are fine as literals. -->
+        <exclude name="AvoidLiteralsInIfCondition"/>
+    </rule>
+
+    <!-- Threading and concurrency correctness — the engine is a Kafka consumer,
+         so this category earns its place. -->
+    <rule ref="category/java/multithreading.xml">
+        <exclude name="DoNotUseThreads"/>
+        <exclude name="UseConcurrentHashMap"/>
+    </rule>
+
+    <!-- Structural complexity. These are the ones that actually indicate a
+         method is becoming hard to reason about. -->
+    <rule ref="category/java/design.xml/CyclomaticComplexity">
+        <properties>
+            <property name="methodReportLevel" value="12"/>
+            <property name="classReportLevel" value="60"/>
+        </properties>
+    </rule>
+    <rule ref="category/java/design.xml/NPathComplexity"/>
+    <rule ref="category/java/design.xml/CognitiveComplexity">
+        <properties>
+            <property name="reportLevel" value="15"/>
+        </properties>
+    </rule>
+    <rule ref="category/java/design.xml/ExcessiveParameterList">
+        <properties>
+            <!-- Domain records legitimately carry many components. -->
+            <property name="minimum" value="12"/>
+        </properties>
+    </rule>
+    <rule ref="category/java/design.xml/SimplifiedTernary"/>
+    <rule ref="category/java/design.xml/CollapsibleIfStatements"/>
+    <rule ref="category/java/design.xml/UselessOverridingMethod"/>
+
+    <!-- Performance traps worth catching. -->
+    <rule ref="category/java/performance.xml/InefficientStringBuffering"/>
+    <rule ref="category/java/performance.xml/AvoidInstantiatingObjectsInLoops"/>
+
+    <!-- Best practice, minus the rules that argue with Spring and JUnit 5. -->
+    <rule ref="category/java/bestpractices.xml">
+        <exclude name="JUnitTestsShouldIncludeAssert"/>
+        <exclude name="JUnitAssertionsShouldIncludeMessage"/>
+        <exclude name="GuardLogStatement"/>
+        <exclude name="AbstractClassWithoutAbstractMethod"/>
+    </rule>
+</ruleset>
