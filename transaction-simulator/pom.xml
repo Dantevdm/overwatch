@@ -30,8 +30,13 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.springframework.kafka</groupId>
-            <artifactId>spring-kafka</artifactId>
+            <!-- The starter, not the bare spring-kafka library. Spring Boot 4
+                 modularised auto-configuration: the library on the classpath no
+                 longer brings KafkaAutoConfiguration with it, so KafkaTemplate,
+                 @KafkaListener containers and KafkaAdmin are simply never
+                 defined. The same change is why Flyway needs its own starter. -->
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-kafka</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springdoc</groupId>
