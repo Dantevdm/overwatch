@@ -176,6 +176,13 @@ jobs:
       - name: Smoke test
         run: ./scripts/smoke-test.sh
 
+      # A Grafana panel whose query returns nothing renders as "No data", which
+      # is indistinguishable from a metric that is simply quiet — so a broken
+      # dashboard is invisible in a way a broken endpoint is not. This runs every
+      # panel's query against the live Prometheus and fails on the empty ones.
+      - name: Verify dashboard queries return data
+        run: ./scripts/verify-dashboards.py
+
       - name: Dump logs on failure
         if: failure()
         run: docker compose logs --tail=200

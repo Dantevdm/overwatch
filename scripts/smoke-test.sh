@@ -171,9 +171,29 @@ check "application tag is present"             body_matches "$API_BASE/actuator/
 if [[ "$have_docker" -eq 1 ]]; then
   check "fraud-engine exposes /actuator/prometheus" internal_matches fraud-engine 8082 /actuator/prometheus "jvm_memory_used_bytes"
   check "simulator exposes /actuator/prometheus"    internal_matches transaction-simulator 8081 /actuator/prometheus "jvm_memory_used_bytes"
+
+  # The distributions must be exported as histograms, not summaries. Grafana
+  # reads them with histogram_quantile(), which needs _bucket series; a summary
+  # exports only _count, _sum and a rolling _max, and the panels then render
+  # "No data" with every metric name still spelled correctly. That is exactly
+  # how six panels were silently blank, so the bucket series are asserted by
+  # name rather than trusted.
+  check "detection latency exports histogram buckets" \
+    internal_matches fraud-engine 8082 /actuator/prometheus "fraud_detection_latency_seconds_bucket"
+  check "risk score exports histogram buckets" \
+    internal_matches fraud-engine 8082 /actuator/prometheus "fraud_risk_score_bucket"
+  check "flagged amount exports histogram buckets" \
+    internal_matches fraud-engine 8082 /actuator/prometheus "fraud_amount_flagged_zar_bucket"
+  # The severity bands break at 0.5 and 0.75, so those edges have to exist for
+  # the risk-score panels to line up with the bands they are read against.
+  check "risk score buckets include the severity edges" \
+    internal_matches fraud-engine 8082 /actuator/prometheus 'fraud_risk_score_bucket.*le="0.75"'
+  check "HTTP timings export histogram buckets" \
+    internal_matches fraud-engine 8082 /actuator/prometheus "http_server_requests_seconds_bucket"
 else
   skip "engine metrics (needs docker compose)"
   skip "simulator metrics (needs docker compose)"
+  skip "histogram bucket checks (needs docker compose)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -195,11 +215,37 @@ else
   skip "target enumeration (Prometheus API unreachable)"
 fi
 
+# Consumer lag is the one number that says whether detection is keeping pace, so
+# its absence matters. It is polled rather than asserted once: the per-partition
+# gauge is only created after the consumer has been assigned a partition and
+# completed a fetch, which happens tens of seconds *after* the engine reports
+# itself healthy. Asserted directly it would be flaky on a cold stack, which is
+# worse than not checking it at all.
+lag_series=""
+for _ in $(seq 1 20); do
+  lag_series=$(curl -fsG "http://localhost:${OW_PROMETHEUS_PORT:-9090}/api/v1/query" \
+    --data-urlencode 'query=kafka_consumer_fetch_manager_records_lag' 2>/dev/null \
+    | grep -o '"metric"' | wc -l | tr -d ' ')
+  [[ "${lag_series:-0}" -gt 0 ]] && break
+  sleep 3
+done
+if [[ "${lag_series:-0}" -gt 0 ]]; then
+  printf '  %sPASS%s  consumer lag is being scraped (%s partition series)\n' "$G" "$N" "$lag_series"; PASS=$((PASS + 1))
+else
+  printf '  %sFAIL%s  no kafka_consumer_fetch_manager_records_lag series after 60s — '\
+'the engine may not be consuming\n' "$R" "$N"; FAIL=$((FAIL + 1))
+fi
+
 # ---------------------------------------------------------------------------
 section "Grafana provisioning"
 # ---------------------------------------------------------------------------
 check "Grafana is up"                    body_matches "http://localhost:${OW_GRAFANA_PORT:-3000}/api/health" '"database"'
 check "Prometheus datasource provisioned" body_matches "http://localhost:${OW_GRAFANA_PORT:-3000}/api/datasources" 'prometheus'
+# Every panel names this uid explicitly rather than relying on isDefault, so if
+# the uid ever drifts the dashboards fail as a set — worth catching here rather
+# than as three screens of "Datasource prometheus was not found".
+check "datasource uid is the one panels reference" \
+  body_matches "http://localhost:${OW_GRAFANA_PORT:-3000}/api/datasources" '"uid":"prometheus"'
 check "pipeline-health dashboard present" body_matches "http://localhost:${OW_GRAFANA_PORT:-3000}/api/search?query=Pipeline" 'Pipeline Health'
 # The UI's Metrics page frames these dashboards. Grafana sends
 # "X-Frame-Options: deny" unless GF_SECURITY_ALLOW_EMBEDDING is set, and the
