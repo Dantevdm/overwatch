@@ -30,14 +30,23 @@ public class TransactionConsumer {
 
     @KafkaListener(topics = Topics.TRANSACTIONS, groupId = "fraud-engine")
     public void onTransaction(Transaction txn) {
+        // A null payload means ErrorHandlingDeserializer could not read the record.
+        // Without that wrapper the container would fail before reaching this method
+        // and retry the same record forever, which looks like a stalled pipeline
+        // rather than a bad message.
+        if (txn == null) {
+            log.warn("Skipping a record that could not be deserialized");
+            meters.counter("transactions.failed", "reason", "deserialization").increment();
+            return;
+        }
         try {
             processor.process(txn);
         } catch (RuntimeException e) {
-            // One poison message must not stall the partition. In production this
-            // is where a dead-letter topic belongs; recorded as a known gap rather
-            // than half-built.
-            log.error("Failed to process transaction {}; skipping", txn == null ? null : txn.id(), e);
-            meters.counter("transactions.failed").increment();
+            // One poison message must not stall the partition. A dead-letter topic
+            // belongs here in production; recorded as a known gap rather than
+            // half-built.
+            log.error("Failed to process transaction {}; skipping", txn.id(), e);
+            meters.counter("transactions.failed", "reason", "processing").increment();
         }
     }
 }

@@ -2,7 +2,7 @@ package com.overwatch.engine;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.autoconfigure.domain.EntityScan;
+import org.springframework.boot.persistence.autoconfigure.EntityScan;
 
 /**
  * Consumes transactions, evaluates each against the configured rule set,
@@ -19,6 +19,7 @@ import org.springframework.boot.autoconfigure.domain.EntityScan;
  * which sit under this package.
  */
 @SpringBootApplication
+// Boot 4 modularisation moved this out of ...autoconfigure.domain.
 @EntityScan("com.overwatch.common.persistence")
 public class FraudEngineApplication {
 

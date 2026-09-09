@@ -28,9 +28,18 @@ spring:
     consumer:
       group-id: fraud-engine
       auto-offset-reset: earliest
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      # Both deserializers are wrapped in ErrorHandlingDeserializer, which is not
+      # decoration. Deserialization happens BEFORE the listener method is called,
+      # so a try/catch inside the listener cannot see a malformed message — the
+      # container just fails, rewinds, and retries the same poison record
+      # forever, which presents as a pipeline that has silently stopped.
+      # Wrapped, a bad record surfaces as a null payload the listener can log and
+      # skip, and the partition keeps moving.
+      key-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
       properties:
+        spring.deserializer.key.delegate.class: org.apache.kafka.common.serialization.StringDeserializer
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
         spring.json.trusted.packages: com.overwatch.common.domain
         spring.json.use.type.headers: false
         spring.json.value.default.type: com.overwatch.common.domain.Transaction

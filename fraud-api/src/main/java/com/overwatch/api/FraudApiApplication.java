@@ -2,7 +2,7 @@ package com.overwatch.api;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.autoconfigure.domain.EntityScan;
+import org.springframework.boot.persistence.autoconfigure.EntityScan;
 
 /**
  * Backend-for-frontend over the fraud data store: transactions, alerts, rule
@@ -24,6 +24,7 @@ import org.springframework.boot.autoconfigure.domain.EntityScan;
         "com.overwatch.api",
         "com.overwatch.engine.rule"
 })
+// Boot 4 modularisation moved this out of ...autoconfigure.domain.
 @EntityScan("com.overwatch.common.persistence")
 public class FraudApiApplication {
 
