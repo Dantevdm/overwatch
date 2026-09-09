@@ -123,7 +123,7 @@ adding one class that implements `FraudRule` — no schema migration.
 - [x] Health checks and dependency ordering so `up` works from cold
 - [x] Prometheus scrape config + Grafana datasource/dashboard provisioning
 - [x] React + Vite UI scaffold wired to the design tokens
-- [ ] Verify a cold `docker compose up` on the host (needs Docker — see note)
+- [x] Verify a cold `docker compose up` on the host
 
 > **Verification note.** The `common` module was compiled and unit-checked
 > (`javac -Xlint:all`, 22 assertions covering severity boundaries, shadow-mode
@@ -136,8 +136,8 @@ adding one class that implements `FraudRule` — no schema migration.
 - [x] `V1__baseline_schema.sql` — transactions, fraud_rules, fraud_alerts, alert_rule_hits, shadow_rule_hits
 - [x] `V2__seed_fraud_rules.sql` — default ZAR-tuned rule set, one shipped in SHADOW
 - [x] Indexes for the velocity lookup and the dashboard's time-ordered queries
-- [ ] JPA entities and repositories
-- [ ] SA merchant and card reference data (moves with the simulator, Phase 4)
+- [x] JPA entities and repositories
+- [x] SA merchant and card reference data (moves with the simulator, Phase 4)
 
 > **Verified.** Both migrations were applied to a real PostgreSQL 16 instance:
 > 5 tables, 20 indexes, 7 seeded rules. 11 constraint assertions passed (amount,
@@ -183,11 +183,17 @@ adding one class that implements `FraudRule` — no schema migration.
 > rules would fire constantly and the alert list would carry no information.
 
 ### Phase 5 — Fraud API (BFF)
-- [ ] Transactions, alerts and rules controllers with filtering and pagination
-- [ ] Stats endpoints for the dashboard
-- [ ] Rule performance statistics
-- [ ] Replay / what-if endpoint
-- [ ] OpenAPI / Swagger
+- [x] Transactions, alerts and rules controllers with filtering and pagination
+- [x] Stats endpoints for the dashboard
+- [x] Rule performance statistics
+- [x] Replay / what-if endpoint
+- [x] OpenAPI / Swagger
+
+> **Verified.** Every endpoint was exercised against the running stack with live
+> data, including each optional filter (card, category, severity, status, window)
+> and the unbounded-window case. `/v3/api-docs` and Swagger UI serve. The
+> checkboxes here lagged the code for several commits — the controllers were
+> written in `ef79066` and this list was never updated.
 
 ### Phase 6 — Dashboard
 - [x] Vite scaffold, tokens.css, app shell with routing
@@ -230,6 +236,96 @@ adding one class that implements `FraudRule` — no schema migration.
 > from a fine dotted LOW to a solid heavy CRITICAL — with direct end labels and a
 > legend on top of that. Identity never rests on hue.
 
+### Phase 8.6 — Chart time filter and framed Grafana
+
+- [x] `rangeMinutes` on `/api/stats/dashboard` — 5m, 15m, 30m, 1h, 12h, 24h, 7d
+- [x] Bucket width derived from the range and returned as `bucketSeconds`, so the
+      client labels its own axis instead of guessing
+- [x] `date_bin` in place of `date_trunc`, because `date_trunc` only understands
+      calendar units and an hourly bucket over a five-minute window is one point
+- [x] Segmented range control on the dashboard, governing both time-series charts
+- [x] **Metrics** screen — the three Grafana dashboards framed in kiosk mode, a tab
+      each, with an *Open in Grafana* escape hatch and its own range control
+
+> **Decisions.** The range governs the charts and not the four headline tiles.
+> A time picker that silently rescopes "Open alerts awaiting an analyst" is
+> answering a different question from the one the label asks — a work queue is not
+> a windowed measurement. The tiles keep their fixed periods and say so.
+>
+> Bucket widths come off a fixed ladder of round numbers (10s, 15s, 30s, 1m, 2m,
+> 5m … 24h), picking the narrowest that keeps the series under 40 points, rather
+> than `range / n`. Round widths put boundaries where a reader expects them —
+> 14:30:00, not 14:27:43 — and keep axis labels short. Bins are anchored to the
+> Unix epoch, in SQL and in the Java zero-fill alike, so two calls a second apart
+> return the same buckets and the dense fill lines up instead of double-counting.
+>
+> Grafana is framed rather than linked because a reviewer who has to find a second
+> URL on a port they were not told about will not look at the metrics at all.
+> Framing needed one env var: anonymous access was already a recorded decision, so
+> `GF_SECURITY_ALLOW_EMBEDDING` exposes no capability that opening Grafana in a tab
+> does not already grant. The embed stays the lesser view — kiosk mode drops the
+> time picker and panel menus — and every tab links out for real exploration.
+
+> **Verified.** All seven ranges exercised against the running stack: each returns
+> 25–31 buckets on round boundaries with the expected width, filters and zero-fill
+> intact, and clamping covers absent, zero, negative and over-long input. Six unit
+> tests cover the ladder and the clamp, including that width never decreases as the
+> window grows. All 22 dashboard PromQL expressions were then re-run against the
+> live Prometheus and every one returns series. The embed was confirmed rendering
+> in a browser on all three tabs. The smoke test grew to 27 checks, and the new
+> framing assertion was itself tested against a Grafana started without
+> `GF_SECURITY_ALLOW_EMBEDDING` to confirm it can actually fail.
+
+### Phase 8.7 — Demo reset
+
+- [x] `POST /api/admin/reset` — truncates transactions, alerts, alert rule hits and
+      shadow rule hits, and reports the row counts removed
+- [x] `POST /api/simulator/reset-counters`, called by the reset so the Simulator
+      screen agrees with an emptied store
+- [x] **Clear data** control in the top bar, behind a confirmation that names what
+      goes and what stays
+- [x] Gated behind `overwatch.api.allow-reset`, answering 403 when off
+
+> **What it does not clear, and why.** Rule configuration survives. Rules are
+> configuration rather than history, and the seed is a Flyway migration that will
+> not re-run on an existing volume — deleting the rows would leave the engine with
+> no rules and no route back short of `make clean`. Keeping them is also the more
+> useful demo: tune a threshold, clear the traffic, watch the new threshold work.
+>
+> Micrometer counters survive too, and this one is worth being explicit about
+> because it looks like a bug. Prometheus counters are monotonic by contract and
+> `rate()` treats a decrease as a process restart, so zeroing them would put a
+> false spike in every panel and throw away the history the dashboards exist to
+> show. The visible consequence is that just after a reset the dashboard reads zero
+> while Grafana still shows the full run. Both are correct — they answer different
+> questions — and the confirmation dialog says so rather than leaving it to be
+> discovered.
+>
+> **On shipping an unauthenticated destructive endpoint.** This is the sharp edge
+> of the no-authentication gap, so it is a flag rather than a hardcoded `true`:
+> `allow-reset` is the single line a real deployment sets to false, and this is the
+> first route that should require a role when auth arrives. It ships on because the
+> stack exists to be demonstrated, and a reset button that needs a configuration
+> change to work is a reset button nobody has.
+>
+> The truncate names all four tables explicitly instead of using
+> `TRUNCATE transactions CASCADE`. CASCADE would wipe whatever happens to reference
+> the table, so a future migration adding a table nobody remembers would silently
+> start being cleared by this endpoint; naming them means PostgreSQL refuses the
+> statement instead, turning silent data loss into a loud error.
+
+> **Verified.** Exercised against the running stack: 34,351 transactions, 9,375
+> alerts, 11,248 alert hits and 600 shadow hits cleared, simulator counters zeroed,
+> and all 7 rules preserved — including a weight and a state deliberately changed
+> beforehand to prove configuration survives. The truncate was first rehearsed
+> inside a rolled-back transaction to confirm it leaves `fraud_rules` untouched and
+> needs no CASCADE. `ALLOW_RESET=false` was tested on a separate instance and
+> answers 403. Driven through the UI end to end, confirming the store empties, the
+> counts are reported, and the page refetches immediately rather than showing stale
+> figures for a poll interval. The smoke test's new check asserts the route through
+> the OpenAPI document rather than calling it — a smoke test that empties the store
+> would destroy the data of anyone running it against a live demo.
+
 ### Phase 7 — Observability
 - [x] Actuator and Micrometer on all services
 - [x] Business metrics — latency percentiles, alerts by rule, shadow hits, ZAR flagged
@@ -238,6 +334,18 @@ adding one class that implements `FraudRule` — no schema migration.
 
 > Every PromQL expression was cross-checked against the meter names the engine
 > actually registers, so the dashboards are not querying metrics that do not exist.
+>
+> **Correction, after running it.** That check covered names and not *types*, and
+> the difference cost four panels. `fraud.detection.latency` was built with
+> `publishPercentiles`, which exports a summary of `{quantile}` gauges, while the
+> panels call `histogram_quantile()` over `_bucket` series that only a histogram
+> produces — so the three detection-latency panels, the most interesting
+> operational metric here, read "No data". `http.server.requests` had the same
+> shape: Spring publishes it as a plain timer unless
+> `percentiles-histogram` is enabled, so the HTTP latency panel was empty too.
+> Both are fixed and all 22 expressions now return series. The lesson is that
+> matching a metric name proves less than it appears to: a Prometheus query also
+> depends on the metric's type, and nothing in the name says what that is.
 
 ### Phase 7.5 — Quality & CI
 - [x] JaCoCo coverage gate bound to `verify`
@@ -253,7 +361,52 @@ adding one class that implements `FraudRule` — no schema migration.
 - [x] Postman collection — 22 requests in 6 folders, ordered as a guided tour
 - [x] Environment file, with the alert id captured automatically
 - [x] README with a genuine one-command quickstart
-- [ ] Verification pass — cold `docker compose up` on a clean machine (needs Docker)
+- [x] Verification pass — cold `docker compose up`, smoke test 20/20, `mvn verify` green
+
+---
+
+## What the first real run caught
+
+Recorded because it is the honest argument for running the thing. Everything below
+had been read, reviewed and reasoned about; none of it survived contact with a
+running stack, and none of it would have been found by more reading.
+
+**Optional timestamp filters made both list endpoints 500.** `/api/transactions`
+and `/api/alerts` — the two screens the dashboard is built around — failed with
+`could not determine data type of parameter $5`. The cause is that PostgreSQL
+infers a parameter's type from the context it appears in, and `:since IS NULL`
+offers none, so the driver sends it untyped and the server rejects the statement.
+The string filters in the same query survive the identical shape only because an
+untyped parameter falls back to `text`, which happens to compare correctly against
+`VARCHAR`. Nothing rescues a timestamp. Fixed by making the lower bound
+unconditional and expressing "no window" as `Instant.EPOCH`; the rule left behind
+is never to write `:param IS NULL` for a parameter that is not a string.
+
+**JaCoCo could not read Java 25 bytecode.** `mvn verify` failed on the first
+module with "Unsupported class file major version 69". The parent POM already
+pinned SpotBugs and PMD forward for exactly this reason and explained why in a
+comment — JaCoCo was simply missed. 0.8.13 is the first release that handles it.
+
+**Money was formatted wrongly on every screen.** `toLocaleString('en-ZA', …)`
+followed by `.replace(/,/g, ' ')` assumed en-ZA groups thousands with commas the
+way en-US does. It does not: en-ZA groups with a non-breaking space and uses a
+comma as the *decimal* separator, so the replace deleted the decimal point.
+R863.11 rendered as "R863 11". The formatter now groups by hand.
+
+**The smoke test reported a healthy stack as broken, then intermittently.** Two
+independent faults. It read reassigned host ports from `$OW_API_PORT` and friends,
+which only ever exist in `.env` — a file docker compose reads and a shell script
+does not — so 13 of 20 checks probed the wrong ports. And its helpers piped
+responses into `grep -q`, which exits at the first match; the writer upstream then
+dies of EPIPE (the docker CLI exits 255) and `set -o pipefail` reports the whole
+pipeline as failed even though the match succeeded. That only bites once a
+response outgrows the 64KB pipe buffer, which is why `/actuator/health` always
+passed and `/actuator/prometheus` failed at random.
+
+**A stale image, not a bug.** `/api/simulator/*` returned 404 because the running
+containers predated the commit that added the proxy — `docker compose up` without
+`--build` reuses cached images. `make up` passes `--build`; plain `docker compose
+up`, which the README also offers, does not.
 
 ---
 

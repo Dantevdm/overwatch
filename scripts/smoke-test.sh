@@ -14,6 +14,18 @@
 
 set -uo pipefail
 
+# preflight.sh writes any reassigned host ports to .env, and docker compose
+# reads that file automatically — but this script is not compose, so without
+# sourcing it every probe below would go to the default port and report a
+# healthy stack as entirely broken. Already-exported values win, so CI can
+# override without editing the file.
+if [[ -f .env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env
+  set +a
+fi
+
 PASS=0
 FAIL=0
 SKIP=0
@@ -54,10 +66,33 @@ http_ok()      { curl -fsS -o /dev/null "$1"; }
 # The engine and simulator are not published to the host, so probe them from
 # inside the compose network. That is also the truer test: it exercises exactly
 # the path Prometheus uses to scrape them.
+#
+# Both helpers capture the response and then match it, rather than piping into
+# `grep -q`. The pipe version is subtly wrong: grep -q exits at its first match,
+# and if the writer upstream still has data to push it dies of EPIPE — the
+# docker CLI exits 255, curl exits 23 — which `set -o pipefail` then reports as
+# a failed pipeline even though the match succeeded. It only bites once a
+# response outgrows the 64KB pipe buffer, so /actuator/health always passed and
+# /actuator/prometheus failed intermittently, which read as a broken stack
+# rather than a broken test.
 internal_matches() { # internal_matches <service> <port> <path> <pattern>
-  docker compose exec -T "$1" wget -qO- "http://localhost:$2$3" 2>/dev/null | grep -q "$4"
+  local body
+  body=$(docker compose exec -T "$1" wget -qO- "http://localhost:$2$3" 2>/dev/null) || return 1
+  grep -q "$4" <<<"$body"
 }
-body_matches() { curl -fsS "$1" 2>/dev/null | grep -q "$2"; }
+body_matches() { # body_matches <url> <pattern>
+  local body
+  body=$(curl -fsS "$1" 2>/dev/null) || return 1
+  grep -q "$2" <<<"$body"
+}
+
+# True when the response does NOT carry a header matching the pattern. Used for
+# the framing check below, where the interesting outcome is an absent header.
+header_absent() { # header_absent <url> <pattern>
+  local headers
+  headers=$(curl -fsSI "$1" 2>/dev/null) || return 1
+  ! grep -qi "$2" <<<"$headers"
+}
 
 have_docker=0
 if command -v docker >/dev/null 2>&1 && docker compose ps >/dev/null 2>&1; then
@@ -108,6 +143,25 @@ section "Dashboard aggregations"
 check "dashboard stats include the severity series" \
   body_matches "$API_BASE/api/stats/dashboard" 'severityOverTime'
 
+# The charts' time filter. bucketSeconds is what the client labels its axis from,
+# so a response without it renders a chart that lies about its own buckets.
+check "dashboard stats report the bucket width" \
+  body_matches "$API_BASE/api/stats/dashboard" 'bucketSeconds'
+# 5 minutes must come back as 10-second buckets, not silently as hours: an hourly
+# bucket over a five-minute window is one data point.
+check "a 5-minute range buckets to 10 seconds" \
+  body_matches "$API_BASE/api/stats/dashboard?rangeMinutes=5" '"bucketSeconds":10'
+# Out-of-range input is clamped rather than rejected or honoured literally.
+check "an over-long range is clamped to 7 days" \
+  body_matches "$API_BASE/api/stats/dashboard?rangeMinutes=999999" '"rangeMinutes":10080'
+
+# The demo reset. Asserted through the OpenAPI document rather than by calling it:
+# a smoke test that empties the store would destroy the data of anyone who ran it
+# against a stack they were demonstrating. This proves the route is registered and
+# reachable, which is the part that breaks.
+check "data reset endpoint is registered" \
+  body_matches "$API_BASE/v3/api-docs" '/api/admin/reset'
+
 # ---------------------------------------------------------------------------
 section "Metrics endpoints (Micrometer -> Prometheus)"
 # ---------------------------------------------------------------------------
@@ -147,6 +201,18 @@ section "Grafana provisioning"
 check "Grafana is up"                    body_matches "http://localhost:${OW_GRAFANA_PORT:-3000}/api/health" '"database"'
 check "Prometheus datasource provisioned" body_matches "http://localhost:${OW_GRAFANA_PORT:-3000}/api/datasources" 'prometheus'
 check "pipeline-health dashboard present" body_matches "http://localhost:${OW_GRAFANA_PORT:-3000}/api/search?query=Pipeline" 'Pipeline Health'
+# The UI's Metrics page frames these dashboards. Grafana sends
+# "X-Frame-Options: deny" unless GF_SECURITY_ALLOW_EMBEDDING is set, and the
+# failure is invisible from the server side — the page loads, the frames stay
+# blank, and nothing is logged. Assert the header is gone.
+check "Grafana permits framing (Metrics page)" \
+  header_absent "http://localhost:${OW_GRAFANA_PORT:-3000}/api/health" 'x-frame-options'
+# The three UIDs the Metrics page frames. A renamed dashboard keeps its UID; a
+# re-created one may not, and then one tab frames a Grafana 404.
+for uid in overwatch-pipeline overwatch-fraud overwatch-rules; do
+  check "dashboard $uid resolves by UID" \
+    body_matches "http://localhost:${OW_GRAFANA_PORT:-3000}/api/dashboards/uid/$uid" '"uid"'
+done
 
 # ---------------------------------------------------------------------------
 section "Dashboard UI"

@@ -25,7 +25,9 @@ make up
 ```
 
 `make up` resolves any host port conflicts first, then starts the stack. Plain
-`docker compose up` works too if your ports happen to be free.
+`docker compose up --build` works too if your ports happen to be free — keep the
+`--build`, because without it compose reuses whatever image it cached last time,
+and a stale image looks like missing features rather than an old build.
 
 That is the whole setup. Docker is the only prerequisite — the build runs inside the
 container, so no local JDK or Maven is needed.
@@ -43,6 +45,7 @@ transactions, and Grafana dashboards already provisioned.
 | Surface | URL |
 |---|---|
 | Dashboard | http://localhost:5173 |
+| Metrics (Grafana, framed in the dashboard) | http://localhost:5173/metrics |
 | API (Swagger) | http://localhost:8080/swagger-ui.html |
 | Grafana | http://localhost:3000 |
 | Prometheus | http://localhost:9090 |
@@ -186,6 +189,18 @@ of total alerts, mean score contribution and false-positive rate. This is what y
 need to decide whether a rule is earning its keep, and it is the first thing that goes
 missing in a rules engine nobody instrumented.
 
+**Selectable chart window.** `GET /api/stats/dashboard?rangeMinutes=N` drives the
+dashboard's two time-series charts over anything from 5 minutes to 7 days. Bucket
+width is the server's choice, not the client's — it comes off a ladder of round
+widths (10s, 30s, 1m, 2m, 30m, 1h, 6h), picking the narrowest that keeps the series
+under 40 points, and is returned as `bucketSeconds` so the chart can title itself
+honestly: the same chart is "alerts per 10 seconds" over five minutes and "alerts
+per 6 hours" over a week. Bins are anchored to the Unix epoch so boundaries land on
+round times and stay stable between polls. The range governs the charts only; the
+headline figures keep their own fixed periods, because silently rescoping "open
+alerts awaiting an analyst" to five minutes answers a different question from the
+one the label asks.
+
 **Replay / what-if.** `POST /api/rules/replay` takes a candidate configuration and a
 time window, replays stored transactions through it, and returns the alerts it *would*
 have generated — writing nothing. "What if the high-value threshold were R30,000?"
@@ -204,13 +219,30 @@ The metrics are business metrics, not just request counters:
 |---|---|
 | `fraud_alerts_by_rule_total` | Which rules actually fire, and how often |
 | `fraud_risk_score` | Distribution of risk scores (histogram) |
-| `fraud_detection_latency_ms` | Ingest-to-alert latency, p50 / p95 / p99 |
+| `fraud_detection_latency_seconds` | Ingest-to-alert latency, as a histogram — p50 / p95 / p99 are computed in Prometheus |
 | `fraud_amount_flagged_zar` | Total ZAR value under alert |
 | `transactions_processed_total` | Throughput, by merchant category and channel |
 | `fraud_shadow_hits_total` | What shadow rules would have caught |
 
+Latency is exported as a Prometheus **histogram** rather than as client-computed
+percentiles. Micrometer's `publishPercentiles` would emit p50/p95/p99 as gauges
+from inside one JVM, and those cannot be aggregated — the mean of two instances'
+p95 is not the p95, and you can never ask for a percentile you did not configure
+up front. Buckets let Prometheus answer any percentile across any set of
+instances, which is what `histogram_quantile()` in the dashboards needs.
+
 Three dashboards ship with the stack: pipeline health, fraud overview, and rule
-performance.
+performance. They are also **framed directly in the dashboard** under
+**Metrics**, one tab each, so the metrics sit next to the alerts they explain
+rather than behind a port nobody mentioned. The frames run in Grafana's kiosk
+mode, and each carries an *Open in Grafana* link for the full time picker and
+panel inspection — the embed is deliberately the lesser view.
+
+Error counters are registered at zero on startup rather than on first failure.
+Micrometer creates a counter when it is first incremented, so a healthy pipeline
+would expose no `transactions_failed_total` at all, and a panel asking "how many
+records have we dropped?" would answer "No data" — indistinguishable from a panel
+whose query is broken.
 
 ---
 
@@ -223,7 +255,7 @@ overwatch/
 │   ├── design-system/           # i1 design system — UI kit and extracted tokens.css
 │   └── planning/                # Project plan, task list, deferred decisions
 ├── common/                      # Shared domain records, events, JPA entities
-│   └── src/main/resources/db/migration/   # Flyway migrations — the schema
+├── database/migration/          # Flyway migrations — the schema
 ├── rule-engine/                 # The rules and the orchestrator (a library)
 ├── transaction-simulator/       # Service 1 — event generation
 ├── fraud-engine/                # Service 2 — rule evaluation
@@ -263,6 +295,39 @@ stream. A CRITICAL alert with five contributing rules appears about a second lat
 — which is the clearest demonstration that scoring accumulates across rules rather
 than latching on the first hit.
 
+### Starting from a clean slate
+
+**Clear data** in the top right of the dashboard empties the store so a run starts
+from nothing — every transaction, alert and rule hit, plus the simulator's session
+counters. It sits behind a confirmation that names what goes and what stays, and
+the equivalent call is:
+
+```bash
+curl -X POST localhost:8080/api/admin/reset
+```
+
+Two things it deliberately does *not* clear.
+
+**Rules keep their configuration** — states, weights and thresholds included. Rules
+are configuration rather than history, and they are seeded by a Flyway migration
+that will not re-run on an existing volume, so deleting them would leave the engine
+with no rules and no way back short of `make clean`. It is also the more useful
+behaviour: tune a threshold, clear the traffic, and watch the new threshold work.
+
+**Prometheus counters keep counting.** A Prometheus counter is monotonic by
+contract and `rate()` reads any decrease as a process restart, so zeroing them
+would write a false spike into every Grafana panel and discard the history the
+dashboards exist to show. Straight after a reset the dashboard therefore reads zero
+while Grafana still shows the whole run. Both are right — one answers "what is in
+the store now", the other "what has this process done since it started". For
+genuinely untouched metrics too, `make clean` drops the volumes.
+
+The endpoint destroys data and nothing in this system authenticates, so it is
+behind `overwatch.api.allow-reset` (`ALLOW_RESET`), which ships on because a reset
+button needing a config change to work is a reset button nobody has. Setting it
+false answers 403 — that one line is what a real deployment changes, and this is
+the first route that should demand a role once the BFF grows authentication.
+
 | Endpoint | Effect |
 |---|---|
 | `GET /api/simulator/status` | Rate, fraud share, totals published |
@@ -271,6 +336,7 @@ than latching on the first hit.
 | `POST /api/simulator/rate?perSecond=50` | Change throughput without a restart |
 | `POST /api/simulator/fraud-rate?rate=0.2` | Change the share of traffic shaped as fraud |
 | `POST /api/simulator/inject/{pattern}` | Publish one specific fraud shape now |
+| `POST /api/admin/reset` | Clear transactions, alerts and hits; keep rules |
 
 These are served by `fraud-api` on 8080 and forwarded to the simulator over the
 compose network, so the dashboard stays on one origin and the simulator needs no
@@ -315,7 +381,7 @@ An offline CVE scan is available if wanted: `mvn dependency-check:check`.
 ## Database schema
 
 The schema is owned by **Flyway**. Migrations live in
-`common/src/main/resources/db/migration` and are versioned, immutable and applied
+`database/migration` and are versioned, immutable and applied
 in order:
 
 | Migration | Contents |
@@ -409,10 +475,23 @@ across 3,000 clean transactions**. Every entity column was checked against the
 migration. The chart palette was measured rather than eyeballed, which caught two
 severity colours 4.1 ΔE apart. Every JSX file was parsed with esbuild.
 
-**Not yet executed.** The full Maven build, Spring wiring, JPA at runtime, Kafka
-serialisation, and `docker compose up` end to end. The environment this was
-assembled in has no Docker and no route to Maven Central. The CI workflow runs all
-of it on every push, and `./scripts/smoke-test.sh` checks a running stack.
+**Also executed, on a machine with Docker and Maven.** `mvn clean verify` passes
+green across all five modules — 68 tests, plus JaCoCo, SpotBugs with find-sec-bugs,
+and PMD. The stack was brought up cold with `docker compose up --build`: Flyway
+migrated, Hibernate's `ddl-auto: validate` accepted every entity against the
+migrated schema, the simulator published, the engine consumed and scored, and
+alerts landed in PostgreSQL — so Spring wiring, JPA at runtime and Kafka
+serialisation are all exercised rather than assumed. `./scripts/smoke-test.sh`
+reports 20 of 20. Every API endpoint was exercised against live data, including
+each optional filter, and all five dashboard screens were loaded in a browser
+against the running stack. The headline demonstration was confirmed end to end:
+`POST /api/simulator/inject/COMPOUND` produces a CRITICAL alert with five
+contributing rules and a score capped at 1.0, about a second later.
+
+**Still not executed.** A first green run of the GitHub Actions workflow — CI has
+not run against these commits, only the equivalent commands locally. And there is
+still no automated integration test through a real broker; the broker path is
+covered by the compose stack and the smoke test rather than by Testcontainers.
 
 ---
 
@@ -421,7 +500,7 @@ of it on every push, and `./scripts/smoke-test.sh` checks a running stack.
 Deliberate omissions, recorded rather than hidden. The full list with reasoning is in
 the project plan.
 
-- **No authentication.** The BFF is the natural seam for it. Out of scope for the brief, and half-built auth is worse than none.
+- **No authentication.** The BFF is the natural seam for it. Out of scope for the brief, and half-built auth is worse than none. The sharpest edge of this gap is `POST /api/admin/reset`, which destroys data — hence the `allow-reset` flag, and hence it being first in the queue for a role check.
 - **Single currency.** Everything is ZAR. The `currency` column exists so multi-currency is additive rather than a rewrite.
 - **Hand-set rule weights.** A learned model would be more interesting and considerably less verifiable in the time available.
 - **Polling, not WebSockets.** Five seconds is imperceptible on a dashboard and a fraction of the complexity.
