@@ -47,8 +47,13 @@
             <scope>runtime</scope>
         </dependency>
         <dependency>
-            <groupId>org.flywaydb</groupId>
-            <artifactId>flyway-core</artifactId>
+            <!-- Spring Boot 4 modularised auto-configuration: flyway-core on the
+                 classpath is no longer enough to activate FlywayAutoConfiguration.
+                 Without this starter Flyway loads, does nothing, logs nothing, and
+                 the first sign of trouble is Hibernate failing schema validation
+                 on a database with no tables in it. -->
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-flyway</artifactId>
         </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
@@ -58,6 +63,30 @@
 
     <build>
         <plugins>
+            <plugin>
+                <!-- The schema lives in /database/migration, outside any module, so
+                     it lands at the root of this service's own classpath rather
+                     than inside a nested dependency jar — the one place Flyway's
+                     classpath scanning is reliably able to read it. -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-db-migrations</id>
+                        <phase>generate-resources</phase>
+                        <goals><goal>copy-resources</goal></goals>
+                        <configuration>
+                            <outputDirectory>${project.build.outputDirectory}/db/migration</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${maven.multiModuleProjectDirectory}/database/migration</directory>
+                                    <filtering>false</filtering>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <!-- Produces the executable fat jar. spring-boot-starter-parent only
                  declares this plugin in pluginManagement, so an executable module
                  must opt in explicitly; without it Maven emits a plain library jar

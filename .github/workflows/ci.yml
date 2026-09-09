@@ -107,7 +107,7 @@ jobs:
           PGPASSWORD: overwatch
         run: |
           set -euo pipefail
-          for f in common/src/main/resources/db/migration/V*.sql; do
+          for f in database/migration/V*.sql; do
             echo "==> $f"
             psql -h localhost -U overwatch -d overwatch -v ON_ERROR_STOP=1 -q -f "$f"
           done

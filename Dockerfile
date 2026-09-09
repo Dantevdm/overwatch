@@ -37,13 +37,17 @@ RUN --mount=type=cache,target=/root/.m2 \
     mvn -B -q dependency:resolve \
       || echo 'Dependency warm-up incomplete — the package step will fetch the rest.'
 
+# The schema. Copied before the build because both datasource-owning services
+# package it into their own classpath (see database/README.md).
+COPY database database
+
 COPY common/src                common/src
 COPY rule-engine/src           rule-engine/src
 COPY transaction-simulator/src transaction-simulator/src
 COPY fraud-engine/src          fraud-engine/src
 COPY fraud-api/src             fraud-api/src
 
-# One reactor build, in parallel across modules. Tests run in CI, not here —
+# One reactor build. Tests run in CI, not here —
 # an image build that runs the test suite makes `docker compose up` slow for
 # everyone, every time, to re-prove what CI already proved on the commit.
 RUN --mount=type=cache,target=/root/.m2 \
