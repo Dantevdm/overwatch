@@ -39,20 +39,22 @@ const DASHBOARDS = [
   {
     uid: 'overwatch-pipeline',
     label: 'Pipeline health',
-    blurb: 'Throughput, detection latency percentiles, JVM and service uptime — '
-         + 'is the pipeline keeping up, and is anything falling over.',
+    blurb: 'Consumer lag, published against processed, detection latency, and the '
+         + 'JVM and database behind them — is the pipeline keeping up, and is '
+         + 'anything falling over.',
   },
   {
     uid: 'overwatch-fraud',
     label: 'Fraud overview',
-    blurb: 'Alert volume and rate, severity mix, value flagged in ZAR, and the '
-         + 'transaction mix by merchant category.',
+    blurb: 'Alert volume and rate, severity mix, the value flagged in ZAR and how '
+         + 'those amounts are distributed, and the traffic mix by category and '
+         + 'channel.',
   },
   {
     uid: 'overwatch-rules',
     label: 'Rule performance',
-    blurb: 'Which rules fire and how often, including what the shadow rules '
-         + 'would have caught.',
+    blurb: 'Which rules fire and how often, what the shadow rules would have '
+         + 'caught, and where the risk scores they produce actually land.',
   },
 ];
 

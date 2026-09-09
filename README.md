@@ -218,25 +218,61 @@ The metrics are business metrics, not just request counters:
 | Metric | What it tells you |
 |---|---|
 | `fraud_alerts_by_rule_total` | Which rules actually fire, and how often |
-| `fraud_risk_score` | Distribution of risk scores (histogram) |
-| `fraud_detection_latency_seconds` | Ingest-to-alert latency, as a histogram — p50 / p95 / p99 are computed in Prometheus |
-| `fraud_amount_flagged_zar` | Total ZAR value under alert |
+| `fraud_risk_score_bucket` | Distribution of risk scores — bucket edges on tenths plus 0.5 and 0.75, where the severity bands break |
+| `fraud_detection_latency_seconds_bucket` | Ingest-to-alert latency, as a histogram — p50 / p95 / p99 are computed in Prometheus |
+| `fraud_amount_flagged_zar_bucket` | Value of each flagged transaction, in round-ZAR bands |
 | `transactions_processed_total` | Throughput, by merchant category and channel |
 | `fraud_shadow_hits_total` | What shadow rules would have caught |
+| `kafka_consumer_fetch_manager_records_lag` | Whether detection is keeping pace with traffic |
+| `logback_events_total{level="error"}` | Error rate, without reading logs |
 
-Latency is exported as a Prometheus **histogram** rather than as client-computed
-percentiles. Micrometer's `publishPercentiles` would emit p50/p95/p99 as gauges
-from inside one JVM, and those cannot be aggregated — the mean of two instances'
-p95 is not the p95, and you can never ask for a percentile you did not configure
-up front. Buckets let Prometheus answer any percentile across any set of
-instances, which is what `histogram_quantile()` in the dashboards needs.
+All three distributions are exported as Prometheus **histograms** rather than as
+client-computed percentiles. Micrometer's `publishPercentiles` would emit
+p50/p95/p99 as gauges from inside one JVM, and those cannot be aggregated — the
+mean of two instances' p95 is not the p95, and you can never ask for a percentile
+you did not configure up front. Buckets let Prometheus answer any percentile
+across any set of instances, which is what `histogram_quantile()` in the
+dashboards needs.
 
-Three dashboards ship with the stack: pipeline health, fraud overview, and rule
-performance. They are also **framed directly in the dashboard** under
-**Metrics**, one tab each, so the metrics sit next to the alerts they explain
-rather than behind a port nobody mentioned. The frames run in Grafana's kiosk
-mode, and each carries an *Open in Grafana* link for the full time picker and
-panel inspection — the embed is deliberately the lesser view.
+Risk score and flagged amount use **chosen** bucket edges rather than Micrometer's
+automatic ones. The automatic buckets are generated for timers and land on a
+power-of-ten ladder; both of these quantities have meaningful edges of their own,
+and picking them means a heatmap row corresponds to something a person reasons
+about — the 0.75 severity break, or R25 000 — instead of an arbitrary boundary.
+
+Three dashboards ship with the stack:
+
+| Dashboard | Answers |
+|---|---|
+| **Pipeline health** | Is the pipeline keeping up, and is anything falling over — consumer lag, published against processed, dropped transactions, error rate, detection latency, and the JVM, CPU and connection pool underneath |
+| **Fraud overview** | What the rules are catching — alert volume and rate, severity mix, value flagged and how those amounts are distributed, and the traffic mix by category and channel |
+| **Rule performance** | Which rules earn their place — per-rule contribution, shadow hits, fire rate, and where the risk scores actually land |
+
+Every count and pie is scoped to the dashboard's time picker via
+`increase(...[$__range])`, so changing the range changes the numbers. Lifetime
+totals would read identically at 5 minutes and 7 days, which on a dashboard with
+a time picker is not a simplification but a wrong answer. Severity colours are
+fixed to the same ramp the UI uses, so CRITICAL is the same crimson in both
+places, and every panel carries a description explaining what to conclude from it.
+
+They are also **framed directly in the dashboard** under **Metrics**, one tab
+each, so the metrics sit next to the alerts they explain rather than behind a port
+nobody mentioned. The frames run in Grafana's kiosk mode, and each carries an
+*Open in Grafana* link for the full time picker and panel inspection — the embed
+is deliberately the lesser view.
+
+Panel queries are verified against a live Prometheus rather than by eye:
+
+```bash
+./scripts/verify-dashboards.py
+```
+
+It runs every panel's query, expands the Grafana variables, and fails on any that
+returns no series. This exists because a blank panel is indistinguishable from a
+quiet metric: six panels once used `histogram_quantile()` against metrics exported
+as summaries, so every metric name matched, nothing warned, and the panels were
+simply empty. Matching names is what made them look verified. CI runs it against
+the live stack.
 
 Error counters are registered at zero on startup rather than on first failure.
 Micrometer creates a counter when it is first incremented, so a healthy pipeline

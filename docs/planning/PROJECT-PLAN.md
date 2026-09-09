@@ -326,6 +326,77 @@ adding one class that implements `FraudRule` — no schema migration.
 > the OpenAPI document rather than calling it — a smoke test that empties the store
 > would destroy the data of anyone running it against a live demo.
 
+### Phase 8.8 — Making the dashboards answer their own questions
+
+The three dashboards had the right subjects and the wrong contents. Rewritten, and
+the gaps that made the rewrite necessary are the interesting part.
+
+- [x] **Consumer lag**, published-against-processed, dropped-by-reason and error
+      log rate — none of which existed on any panel
+- [x] **Time-picker correctness**: every count and pie now uses
+      `increase(...[$__range])` instead of a lifetime total
+- [x] **A real risk-score distribution**, replacing a mean plotted under a
+      "distribution" title
+- [x] **Flagged-amount percentiles**, replacing an average of a heavily skewed
+      quantity
+- [x] JVM heap as a fraction of max, GC pause, CPU and Hikari pool
+- [x] The unused `channel` dimension surfaced
+- [x] Severity colours fixed to the UI's ramp; units, thresholds and a description
+      on every panel; layout holes closed; cross-dashboard links; a service filter
+- [x] `scripts/verify-dashboards.py`, wired into CI
+
+> **A dashboard with a time picker that ignores it.** Four tiles and a pie read
+> `sum(transactions_processed_total)` — a counter since process start. Selecting
+> "last 5 minutes" changed nothing about them, so the dashboard confidently
+> answered a question nobody had asked. This is the same trap as the reset button
+> showing zero next to a full Grafana history, except here there was no honest
+> reading available: the tile and the picker directly contradicted each other.
+>
+> **A mean under a title promising a distribution.** "Risk score distribution" was
+> a `histogram` panel fed `fraud_risk_score_sum / fraud_risk_score_count`. A mean
+> is the one statistic that cannot show what the panel exists to ask — whether
+> scores pile up against the threshold — and no bucket series existed to plot,
+> because the meter was a plain summary. Fixing the panel therefore meant fixing
+> the meter, and the README had been claiming it was a histogram all along.
+>
+> The same applied to flagged amounts, where a live reading made the cost obvious:
+> mean R14 900 against a median of R553, a factor of 27. The old panel showed only
+> the mean.
+>
+> **`_max` is a rolling window; `_sum` and `_count` are cumulative.** Noticed
+> because `fraud_amount_flagged_zar_max` read R7 995 while the lifetime mean read
+> R14 942 — a maximum below the average, which is impossible for a real maximum.
+> Micrometer decays the max over a short step, so a panel putting the two side by
+> side compares different time semantics without saying so. Another instance of
+> names agreeing while semantics do not.
+>
+> **The most important metric for a Kafka pipeline was absent.** "Pipeline Health"
+> could not answer whether the pipeline was keeping up: no consumer lag anywhere.
+> It was being scraped the whole time — `kafka_consumer_fetch_manager_records_lag`,
+> reading 0 at 128 tx/s. Along with it, `logback_events_total{level="error"}`, the
+> Hikari pool, GC and CPU were all already exported and all unused, while the panel
+> grid had a 6×8 hole in it.
+
+> **Verified.** All 45 panel queries return series against the live stack, checked
+> by the new script rather than by eye. Both new bucket sets confirmed at their
+> exact intended edges (`le="0.75"` for the severity break; round-ZAR bands). The
+> Fraud Overview was read panel-by-panel in a browser to confirm rendering, units
+> and values — `currencyZAR` formatting as R177M, `percentunit` as 24.89%, and the
+> percentile spread above. The barcharts needed an instant vector reduced to a
+> category field before they drew anything, which was proved by sampling the canvas
+> (31% and 41% ink) since bar labels are painted, not DOM text. The verification
+> script itself was negative-tested by injecting a typo into a panel query and
+> confirming exit 1, then exit 0 once restored. Smoke test 28 → 35 checks, and its
+> new bucket assertions were checked against a deliberately wrong bucket edge to
+> confirm they discriminate rather than pass vacuously.
+>
+> One genuine transient found and documented rather than smoothed over: the
+> per-partition lag gauge does not exist for roughly the first half-minute after an
+> engine restart, because it is created only once the consumer has been assigned a
+> partition and completed a fetch — later than the container reports itself healthy.
+> The panel descriptions say so, and the smoke test polls instead of asserting once,
+> because a flaky check is worse than no check.
+
 ### Phase 7 — Observability
 - [x] Actuator and Micrometer on all services
 - [x] Business metrics — latency percentiles, alerts by rule, shadow hits, ZAR flagged
@@ -346,6 +417,14 @@ adding one class that implements `FraudRule` — no schema migration.
 > Both are fixed and all 22 expressions now return series. The lesson is that
 > matching a metric name proves less than it appears to: a Prometheus query also
 > depends on the metric's type, and nothing in the name says what that is.
+>
+> **Second correction, in Phase 8.8.** "All expressions return series" was still a
+> claim about a check run by hand once, which is the same weakness one level up —
+> it says nothing about the next edit. It is now `scripts/verify-dashboards.py`,
+> run in CI against the live stack, and the dashboards it checks are the rewritten
+> ones. The panels that returned series were also, in several cases, returning the
+> wrong thing: a query can be valid, non-empty and still answer a question the
+> panel title does not ask.
 
 ### Phase 7.5 — Quality & CI
 - [x] JaCoCo coverage gate bound to `verify`
