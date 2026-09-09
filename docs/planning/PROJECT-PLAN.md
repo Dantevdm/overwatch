@@ -146,11 +146,26 @@ adding one class that implements `FraudRule` — no schema migration.
 > velocity query was checked against 60,000 rows — Index Only Scan, 0.027 ms.
 
 ### Phase 3 — Fraud engine
-- [ ] `FraudRule` interface and the six rule implementations
-- [ ] `RuleEngine` orchestrator with score accumulation
-- [ ] Shadow-mode handling
-- [ ] Kafka consumer for `transactions`, producer for `fraud-alerts`
-- [ ] Unit tests per rule, integration test for the pipeline
+- [x] `FraudRule` interface, `RuleContext`, `RuleParameters`, `TransactionHistory` port
+- [x] Seven rule implementations (six live, one shipped in SHADOW)
+- [x] `RuleEngine` — score accumulation, shadow isolation, per-rule failure containment
+- [x] JPA entities and repositories for all five tables
+- [x] `RuleConfigProvider` — cached rule set, refreshed on a timer, survives a DB blip
+- [x] Kafka consumer for `transactions`, producer for `fraud-alerts`
+- [x] Micrometer business metrics — latency percentiles, alerts by rule, shadow hits
+- [x] Unit tests per rule and for the orchestrator
+- [ ] Integration test through a real broker (needs Testcontainers)
+
+> **Verified.** Rule logic is deliberately free of Spring and Jackson — it depends
+> only on the JDK and the `common` module — so it was compiled and executed
+> directly: 28 rule assertions and 19 orchestrator assertions, all passing. These
+> cover UTC-to-SAST conversion (the way a late-night rule is usually quietly
+> wrong), midnight-wrapping windows, inclusive/exclusive boundaries, malformed
+> parameters degrading rather than throwing, shadow isolation under a 0.90 weight,
+> and a deliberately exploding rule not stopping the others. All 40 entity columns
+> were checked against the migration, so `ddl-auto: validate` has been verified
+> statically. Spring wiring, JPA runtime behaviour and Kafka remain unproven until
+> the stack runs.
 
 ### Phase 4 — Transaction simulator
 - [ ] SA merchant, bank and card reference data
