@@ -7,11 +7,12 @@ spring:
     password: ${DB_PASSWORD:overwatch}
   flyway:
     enabled: true
-    # Migrations ship in the common module, so both services that own a
-    # datasource apply the same schema from one source of truth. Concurrent
-    # startup is safe: Flyway takes a lock on its schema-history table, so
-    # whichever service arrives first migrates and the other waits, then finds
-    # nothing to do.
+    # Migrations live in /database/migration, outside any module, and each
+    # service's build copies them onto its classpath — so both services that
+    # own a datasource apply the same schema from one source of truth.
+    # Concurrent startup is safe: Flyway takes a lock on its schema-history
+    # table, so whichever service arrives first migrates and the other waits,
+    # then finds nothing to do.
     locations: classpath:db/migration
     baseline-on-migrate: false
     validate-on-migrate: true
@@ -52,6 +53,14 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
+    distribution:
+      # Export Prometheus histogram buckets for HTTP timings, not just count and
+      # sum. Spring publishes http.server.requests as a plain timer by default,
+      # which gives an average and nothing else — and the Grafana latency panels
+      # call histogram_quantile() over _bucket series, so without this they read
+      # "No data". An average request time hides exactly the tail you care about.
+      percentiles-histogram:
+        http.server.requests: true
   prometheus:
     metrics:
       export:

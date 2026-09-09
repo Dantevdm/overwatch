@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.UUID;
 
 /**
@@ -63,8 +64,29 @@ public class TransactionProcessor {
         this.meters = meters;
         this.evaluationTimer = Timer.builder("fraud.detection.latency")
                 .description("Time to evaluate one transaction against the rule set")
-                .publishPercentiles(0.5, 0.95, 0.99)
+                // A histogram, not client-side percentiles. publishPercentiles()
+                // computes p50/p95/p99 inside this JVM and exports them as
+                // gauges, which cannot be aggregated: averaging two instances'
+                // p95 is not the p95, and there is no way to re-quantile them or
+                // ask a different percentile later. publishPercentileHistogram()
+                // exports the bucket counts instead, so Prometheus can do
+                // histogram_quantile() over any set of instances and any
+                // percentile — which is exactly what the Grafana panels do
+                // (`sum by (le) (rate(..._bucket[5m]))`). With the gauges those
+                // panels had no _bucket series to read and showed "No data".
+                .publishPercentileHistogram()
+                // Bound the buckets. Left open, Micrometer spreads ~70 of them
+                // across nanoseconds to minutes; evaluation is sub-millisecond
+                // to single-digit milliseconds, so most would be empty and the
+                // resolution would sit in the wrong place.
+                .minimumExpectedValue(Duration.ofNanos(100_000))   // 100µs
+                .maximumExpectedValue(Duration.ofSeconds(1))
                 .register(meters);
+
+        // At zero from startup, for the same reason as the consumer's failure
+        // counters: "no alert publish has ever failed" and "this panel is
+        // broken" must not look the same on a dashboard.
+        meters.counter("fraud.alerts.publish.failed");
     }
 
     @Transactional

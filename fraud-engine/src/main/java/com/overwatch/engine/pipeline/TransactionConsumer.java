@@ -20,12 +20,25 @@ public class TransactionConsumer {
 
     private static final Logger log = LoggerFactory.getLogger(TransactionConsumer.class);
 
+    /** Why a record was dropped. Both are registered up front — see below. */
+    private static final String REASON_DESERIALIZATION = "deserialization";
+    private static final String REASON_PROCESSING = "processing";
+
     private final TransactionProcessor processor;
     private final MeterRegistry meters;
 
     public TransactionConsumer(TransactionProcessor processor, MeterRegistry meters) {
         this.processor = processor;
         this.meters = meters;
+
+        // Register the failure counters at zero rather than on first failure.
+        // Micrometer creates a counter when it is first incremented, so a
+        // never-failing pipeline exposes no transactions_failed_total at all —
+        // and a Grafana panel asking "how many records have we dropped?" answers
+        // "No data", which reads identically to a panel whose query is wrong.
+        // Zero is the answer, and it is worth being able to alert on.
+        meters.counter("transactions.failed", "reason", REASON_DESERIALIZATION);
+        meters.counter("transactions.failed", "reason", REASON_PROCESSING);
     }
 
     @KafkaListener(topics = Topics.TRANSACTIONS, groupId = "fraud-engine")
@@ -36,7 +49,7 @@ public class TransactionConsumer {
         // rather than a bad message.
         if (txn == null) {
             log.warn("Skipping a record that could not be deserialized");
-            meters.counter("transactions.failed", "reason", "deserialization").increment();
+            meters.counter("transactions.failed", "reason", REASON_DESERIALIZATION).increment();
             return;
         }
         try {
@@ -46,7 +59,7 @@ public class TransactionConsumer {
             // belongs here in production; recorded as a known gap rather than
             // half-built.
             log.error("Failed to process transaction {}; skipping", txn.id(), e);
-            meters.counter("transactions.failed", "reason", "processing").increment();
+            meters.counter("transactions.failed", "reason", REASON_PROCESSING).increment();
         }
     }
 }

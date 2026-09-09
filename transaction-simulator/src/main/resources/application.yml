@@ -37,6 +37,14 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
+    distribution:
+      # Export Prometheus histogram buckets for HTTP timings, not just count and
+      # sum. Spring publishes http.server.requests as a plain timer by default,
+      # which gives an average and nothing else — and the Grafana latency panels
+      # call histogram_quantile() over _bucket series, so without this they read
+      # "No data". An average request time hides exactly the tail you care about.
+      percentiles-histogram:
+        http.server.requests: true
   prometheus:
     metrics:
       export:
