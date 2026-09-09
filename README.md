@@ -39,6 +39,25 @@ already producing transactions, and Grafana dashboards already provisioned.
 | Grafana | http://localhost:3000 |
 | Prometheus | http://localhost:9090 |
 
+Once it is up, `./scripts/smoke-test.sh` verifies the stack is wired together —
+service health, metrics endpoints, Prometheus targets, Grafana provisioning and
+broker/database connectivity.
+
+### Port conflicts
+
+Every host port is configurable. If one collides with something already running —
+a local Postgres on 5432 is the usual culprit — copy `.env.example` to `.env` and
+change the offending line:
+
+```bash
+cp .env.example .env
+# edit OW_PG_PORT=5433, then
+docker compose up
+```
+
+Only the host side moves; ports inside the compose network are fixed, so nothing
+else needs to change.
+
 ---
 
 ## How it works

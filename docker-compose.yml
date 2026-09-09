@@ -21,7 +21,7 @@ services:
       POSTGRES_USER: overwatch
       POSTGRES_PASSWORD: overwatch
     ports:
-      - "5432:5432"
+      - "${OW_PG_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       # Anything in this directory runs on first boot of an empty volume.
@@ -49,8 +49,10 @@ services:
       - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
       - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
     ports:
-      - "19092:19092"
-      - "9644:9644"
+      # Kafka API, for host tools (rpk, kafkacat, Postman). The admin API on 9644
+      # is deliberately not published: the health check runs rpk inside the
+      # container, so exposing it only invites a port collision.
+      - "${OW_KAFKA_PORT:-19092}:19092"
     volumes:
       - redpanda-data:/var/lib/redpanda/data
     healthcheck:
@@ -74,7 +76,7 @@ services:
       DB_PASSWORD: overwatch
       KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
     ports:
-      - "8082:8082"
+      - "${OW_ENGINE_PORT:-8082}:8082"
     depends_on:
       postgres:
         condition: service_healthy
@@ -99,7 +101,7 @@ services:
       DB_PASSWORD: overwatch
       CORS_ORIGINS: http://localhost:5173
     ports:
-      - "8080:8080"
+      - "${OW_API_PORT:-8080}:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -119,7 +121,7 @@ services:
     environment:
       KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
     ports:
-      - "8081:8081"
+      - "${OW_SIMULATOR_PORT:-8081}:8081"
     depends_on:
       redpanda:
         condition: service_healthy
@@ -135,7 +137,7 @@ services:
     environment:
       VITE_API_URL: http://fraud-api:8080
     ports:
-      - "5173:5173"
+      - "${OW_UI_PORT:-5173}:5173"
     depends_on:
       - fraud-api
     restart: unless-stopped
@@ -150,7 +152,7 @@ services:
       - --storage.tsdb.retention.time=6h
       - --web.enable-lifecycle
     ports:
-      - "9090:9090"
+      - "${OW_PROMETHEUS_PORT:-9090}:9090"
     volumes:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
@@ -168,7 +170,7 @@ services:
       GF_USERS_DEFAULT_THEME: light
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/pipeline-health.json
     ports:
-      - "3000:3000"
+      - "${OW_GRAFANA_PORT:-3000}:3000"
     volumes:
       # Provisioning: datasource and dashboards exist on first boot, no imports.
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
