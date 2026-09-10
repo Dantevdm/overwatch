@@ -11,6 +11,10 @@ import Streams from './pages/Streams.jsx';
 import ApiExplorer from './pages/ApiExplorer.jsx';
 import ResetData from './components/ResetData.jsx';
 import ExternalTools from './components/ExternalTools.jsx';
+import {
+  IconAlerts, IconApi, IconCardholders, IconDashboard, IconMetrics,
+  IconRules, IconSimulator, IconStreams, IconTransactions,
+} from './components/Icons.jsx';
 import { api } from './api.js';
 
 /**
@@ -23,38 +27,44 @@ import { api } from './api.js';
  * watch it, investigate something, change how it behaves, or look underneath it.
  *
  * Order within a group is by how often it is opened, not alphabetically.
+ *
+ * Each item carries an icon. With four headings and nine links the headings do
+ * the grouping and the icons do the picking-out: you stop reading the list and
+ * start aiming at a shape. They are deliberately not a substitute for the label
+ * — an icon alone is a guessing game, and a fraud console is not the place to
+ * make someone guess which button clears the store.
  */
 const NAV = [
   {
     heading: 'Monitor',
     items: [
-      { to: '/dashboard', label: 'Dashboard' },
-      { to: '/alerts', label: 'Alerts' },
+      { to: '/dashboard', label: 'Dashboard', icon: IconDashboard },
+      { to: '/alerts', label: 'Alerts', icon: IconAlerts },
     ],
   },
   {
     heading: 'Investigate',
     items: [
-      { to: '/transactions', label: 'Transactions' },
-      { to: '/customers', label: 'Cardholders' },
+      { to: '/transactions', label: 'Transactions', icon: IconTransactions },
+      { to: '/customers', label: 'Cardholders', icon: IconCardholders },
     ],
   },
   {
     heading: 'Configure',
     items: [
-      { to: '/rules', label: 'Rules' },
-      { to: '/simulator', label: 'Simulator' },
+      { to: '/rules', label: 'Rules', icon: IconRules },
+      { to: '/simulator', label: 'Simulator', icon: IconSimulator },
     ],
   },
   {
     heading: 'Platform',
     items: [
-      { to: '/streams', label: 'Streams' },
-      { to: '/metrics', label: 'Metrics' },
+      { to: '/streams', label: 'Streams', icon: IconStreams },
+      { to: '/metrics', label: 'Metrics', icon: IconMetrics },
       // Deliberately not '/api': that prefix is the Vite proxy's, so a route
       // there is handed to the BFF and the browser gets the API's 404 instead
       // of this page.
-      { to: '/api-explorer', label: 'API' },
+      { to: '/api-explorer', label: 'API', icon: IconApi },
     ],
   },
 ];
@@ -125,6 +135,9 @@ function Shell() {
               <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                 {group.items.map((item) => (
                   <li key={item.to}>
+                    {/* Render-prop form rather than the style callback alone:
+                        the icon's strength depends on isActive too, and
+                        NavLink only hands that to children this way. */}
                     <NavLink to={item.to} style={({ isActive }) => ({
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                       padding: 'var(--row-pad)', borderRadius: 'var(--radius-md)',
@@ -133,7 +146,20 @@ function Shell() {
                       background: isActive ? 'var(--side-active)' : 'transparent',
                       marginBottom: 2,
                     })}>
-                      {item.label}
+                    {({ isActive }) => (
+                      <>
+                      <span style={{ display: 'inline-flex', alignItems: 'center',
+                                     gap: 'var(--space-3)', minWidth: 0 }}>
+                        {/* The icon sits at 0.72 opacity when the link is idle
+                            and full strength when it is active, so the active
+                            row reads as one bright unit rather than bright text
+                            next to a grey pictogram. */}
+                        <span style={{ opacity: isActive ? 1 : 0.72, display: 'flex' }}>
+                          <item.icon />
+                        </span>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis',
+                                       whiteSpace: 'nowrap' }}>{item.label}</span>
+                      </span>
                       {item.to === '/alerts' && openAlerts > 0 && (
                         <span style={{
                           background: 'rgba(255,255,255,.22)', borderRadius: 'var(--radius-full)',
@@ -143,6 +169,8 @@ function Shell() {
                           {openAlerts}
                         </span>
                       )}
+                      </>
+                    )}
                     </NavLink>
                   </li>
                 ))}

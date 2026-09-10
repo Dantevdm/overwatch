@@ -147,6 +147,33 @@ export const CATALOGUE = [
     params: [],
     body: JSON.stringify({ ruleType: 'HIGH_VALUE', hours: 24, parameters: { threshold: 30000 } }, null, 2),
   },
+  {
+    group: 'Replay',
+    method: 'GET',
+    path: '/api/replay/sweepable',
+    summary: 'What each rule can be swept on, and a ladder to start from.',
+    why: 'Includes the rules that cannot be swept, each with the reason — a '
+       + 'country list is not a threshold, and a rule that counts a card\'s '
+       + 'recent history has nothing to count during a replay.',
+    params: [],
+  },
+  {
+    group: 'Replay',
+    method: 'POST',
+    path: '/api/replay/sweep',
+    summary: 'Many candidate values for one parameter, in a single pass.',
+    why: 'Replay answers "what would this threshold have caught". This answers '
+       + '"where should it sit", which is the question actually being asked. One '
+       + 'pass over the history evaluates every candidate, so seven thresholds '
+       + 'cost one trip through the data rather than seven.',
+    params: [],
+    body: JSON.stringify({
+      ruleType: 'HIGH_VALUE',
+      parameter: 'threshold',
+      values: [10000, 20000, 30000, 50000, 75000, 100000, 150000],
+      hours: 168,
+    }, null, 2),
+  },
 
   // ---- Statistics ----------------------------------------------------------
   {

@@ -301,7 +301,7 @@
     {
       "type": "timeseries",
       "title": "Risk score percentiles",
-      "description": "The same scores as quantile lines, which is the easier read for \"has tuning changed anything\". Bucket edges sit on tenths plus 0.5 and 0.75, because those are where the severity bands break — so a p95 crossing 0.75 is the moment alerts start arriving as CRITICAL rather than HIGH.",
+      "description": "The same scores as quantile lines, which is the easier read for \"has tuning changed anything\". Bucket edges sit on tenths plus 0.45, so every severity band boundary (0.45, 0.60, 0.80) has one — a p95 crossing 0.80 is the moment alerts start arriving as CRITICAL rather than HIGH.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"

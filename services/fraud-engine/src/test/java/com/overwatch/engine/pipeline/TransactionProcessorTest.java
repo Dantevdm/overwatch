@@ -252,7 +252,7 @@ class TransactionProcessorTest {
         processor.process(t);                                    // redelivery
 
         assertThat(counter("transactions.processed")).isEqualTo(1.0);
-        assertThat(counter("fraud.alerts", "severity", "MEDIUM")).isEqualTo(1.0);
+        assertThat(counter("fraud.alerts", "severity", "LOW")).isEqualTo(1.0);
         assertThat(counter("fraud.alerts.by.rule", "rule", "HIGH_VALUE")).isEqualTo(1.0);
         assertThat(meters.find("fraud.risk.score").summary().count()).isEqualTo(1);
         verify(alerts).save(any());   // exactly once

@@ -1,6 +1,6 @@
 {
   "uid": "overwatch-pipeline",
-  "title": "Overwatch — Pipeline Health",
+  "title": "Overwatch \u2014 Pipeline Health",
   "description": "Is the pipeline keeping up, and is anything falling over. Read the top row first: it answers both questions in five numbers.",
   "tags": [
     "overwatch",
@@ -117,7 +117,7 @@
     {
       "type": "stat",
       "title": "Consumer lag",
-      "description": "Records sitting on the topic that the engine has not consumed yet — the one number that says whether detection is keeping pace with traffic. Zero means the engine is at the head of the topic. A figure that climbs steadily means transactions are arriving faster than they can be evaluated, and every alert is getting later. Note that this reads \"No data\" for the first half-minute after an engine restart: the per-partition lag gauge is only created once the consumer has been assigned a partition and completed a fetch, which is later than the container reports itself healthy.",
+      "description": "Records sitting on the topic that the engine has not consumed yet \u2014 the one number that says whether detection is keeping pace with traffic. Zero means the engine is at the head of the topic. A figure that climbs steadily means transactions are arriving faster than they can be evaluated, and every alert is getting later. Note that this reads \"No data\" for the first half-minute after an engine restart: the per-partition lag gauge is only created once the consumer has been assigned a partition and completed a fetch, which is later than the container reports itself healthy.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -166,8 +166,8 @@
     },
     {
       "type": "stat",
-      "title": "Published → processed gap",
-      "description": "Transactions the simulator has published, minus those the engine has processed. A handful either way is scrape skew — the two services are sampled at slightly different instants, so this can even read slightly negative. A number that grows without coming back is real backlog or real loss.",
+      "title": "Published \u2192 processed gap",
+      "description": "Transactions published to the stream over the dashboard's time range, minus those the engine processed in the same range. A handful either way is scrape skew and window edges \u2014 the two services are sampled at slightly different instants, and the engine may still be draining work published just before the window opened.\n\nDeliberately increase() over the range rather than the difference of the two raw counters. The raw form read -808139 once: the simulator had been rebuilt and restarted, so its in-process counter began again at zero while the engine's kept climbing, and subtracting two lifetime totals that no longer share a lifetime is meaningless. increase() understands a counter reset and only ever measures forward motion inside the window, so a restart of either service, or a metrics clear that removes both, leaves this panel honest.\n\nclamp_min at zero because the quantity is a count of transactions in flight, and there is no such thing as minus eight hundred thousand of them. A number that grows without coming back is real backlog or real loss.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -208,7 +208,7 @@
       },
       "targets": [
         {
-          "expr": "sum(simulator_published_total) - sum(transactions_processed_total)",
+          "expr": "clamp_min(\n  sum(increase(simulator_published_total[$__range]))\n  - sum(increase(transactions_processed_total[$__range])),\n  0)",
           "legendFormat": "gap",
           "instant": true
         }
@@ -391,7 +391,7 @@
     {
       "type": "timeseries",
       "title": "Consumer lag over time",
-      "description": "Lag as a shape rather than a single number. A sawtooth is normal — it builds between polls and drains. A staircase that only goes up is the engine losing ground. Note that this reads \"No data\" for the first half-minute after an engine restart: the per-partition lag gauge is only created once the consumer has been assigned a partition and completed a fetch, which is later than the container reports itself healthy.",
+      "description": "Lag as a shape rather than a single number. A sawtooth is normal \u2014 it builds between polls and drains. A staircase that only goes up is the engine losing ground. Note that this reads \"No data\" for the first half-minute after an engine restart: the per-partition lag gauge is only created once the consumer has been assigned a partition and completed a fetch, which is later than the container reports itself healthy.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -564,7 +564,7 @@
     {
       "type": "heatmap",
       "title": "Detection latency distribution",
-      "description": "The same histogram without the quantiles: every bucket, coloured by how many evaluations landed in it. This shows shape that percentile lines hide — two clusters of latency look identical to a p95 and very different here.",
+      "description": "The same histogram without the quantiles: every bucket, coloured by how many evaluations landed in it. This shows shape that percentile lines hide \u2014 two clusters of latency look identical to a p95 and very different here.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -630,7 +630,7 @@
     {
       "type": "timeseries",
       "title": "Heap used",
-      "description": "Heap as a fraction of the maximum the JVM will allow itself, rather than raw bytes — 400MB means nothing without knowing the ceiling, and the ceiling is a container limit nobody remembers. A sawtooth is healthy garbage collection. A rising floor is a leak.",
+      "description": "Heap as a fraction of the maximum the JVM will allow itself, rather than raw bytes \u2014 400MB means nothing without knowing the ceiling, and the ceiling is a container limit nobody remembers. A sawtooth is healthy garbage collection. A rising floor is a leak.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -933,7 +933,7 @@
     {
       "type": "stat",
       "title": "Uptime",
-      "description": "How long each service has been running. A value that keeps resetting is a container in a crash loop — which the \"Services up\" tile will not catch if it restarts fast enough between scrapes.",
+      "description": "How long each service has been running. A value that keeps resetting is a container in a crash loop \u2014 which the \"Services up\" tile will not catch if it restarts fast enough between scrapes.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"

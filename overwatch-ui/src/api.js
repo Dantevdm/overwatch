@@ -80,7 +80,12 @@ export const api = {
 
   // Clears transactions, alerts and rule hits — not rule configuration. Always
   // behind a confirmation in the UI: it is the one call here that destroys data.
-  resetData: () => send('POST', '/admin/reset'),
+  //
+  // `metrics: true` additionally deletes this stack's series from Prometheus.
+  // Separate and off by default, because it destroys something the data reset
+  // does not: the record that the run ever happened.
+  resetData: ({ metrics = false } = {}) =>
+    send('POST', `/admin/reset${metrics ? '?metrics=true' : ''}`),
   replayRuleTypes: () => get('/replay/rule-types'),
 
   // Cardholders. Derived from observed transactions rather than a customer

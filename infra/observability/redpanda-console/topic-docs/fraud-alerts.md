@@ -68,9 +68,14 @@ decides severity:
 | Score | Severity |
 |---|---|
 | ≥ 0.80 | `CRITICAL` |
-| ≥ 0.55 | `HIGH` |
-| ≥ 0.30 | `MEDIUM` |
+| ≥ 0.60 | `HIGH` |
+| ≥ 0.45 | `MEDIUM` |
+| ≥ 0.30 | `LOW` |
 | < 0.30 | no alert — the threshold |
+
+The bottom band starts exactly where alerting starts. It has to: MEDIUM used to
+begin at 0.30 as well, which meant no alert on this topic could ever carry
+`LOW`.
 
 So an alert always scores at least 0.30, and the sum of `hits[].weight` can
 exceed `riskScore` because of the cap. A compound fraud pattern trips five rules

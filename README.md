@@ -253,7 +253,7 @@ The metrics are business metrics, not just request counters:
 | Metric | What it tells you |
 |---|---|
 | `fraud_alerts_by_rule_total` | Which rules actually fire, and how often |
-| `fraud_risk_score_bucket` | Distribution of risk scores — bucket edges on tenths plus 0.5 and 0.75, where the severity bands break |
+| `fraud_risk_score_bucket` | Distribution of risk scores — bucket edges on tenths plus 0.45, so every severity band boundary (0.45, 0.60, 0.80) has an edge |
 | `fraud_detection_latency_seconds_bucket` | Ingest-to-alert latency, as a histogram — p50 / p95 / p99 are computed in Prometheus |
 | `fraud_amount_flagged_zar_bucket` | Value of each flagged transaction, in round-ZAR bands |
 | `transactions_processed_total` | Throughput, by merchant category and channel |

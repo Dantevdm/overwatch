@@ -131,6 +131,17 @@ public interface TransactionReadRepository extends JpaRepository<TransactionEnti
     long countByCustomerId(String customerId);
 
     /**
+     * Transactions in a window, newest first, for replay to evaluate.
+     *
+     * <p>Replay previously called {@code findAll()} and filtered in Java. That
+     * loaded every row in the table into the heap to look at a subset of them,
+     * which was survivable at ten thousand rows and is not at half a million.
+     * The window is applied in SQL and the caller bounds the count.
+     */
+    List<TransactionEntity> findByOccurredAtGreaterThanEqualOrderByOccurredAtDesc(
+            Instant since, Pageable pageable);
+
+    /**
      * Transactions per bucket, for the volume the alert series is measured
      * against. Same bucketing as {@code AlertRepository.bucketedCounts} and
      * documented there: {@code date_bin} from the Unix epoch, so the two series

@@ -2,9 +2,11 @@ package com.overwatch.api.web;
 
 import com.overwatch.api.customer.CardholderSummaryRefresher;
 import com.overwatch.api.service.DataResetService;
+import com.overwatch.api.service.MetricsResetService;
 import com.overwatch.api.service.StatsService;
 import com.overwatch.api.simulator.SimulatorGateway;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,6 +14,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -44,17 +47,20 @@ public class AdminController {
     private final SimulatorGateway simulator;
     private final StatsService stats;
     private final CardholderSummaryRefresher summaries;
+    private final MetricsResetService metrics;
     private final boolean allowReset;
 
     public AdminController(DataResetService reset,
                            SimulatorGateway simulator,
                            StatsService stats,
                            CardholderSummaryRefresher summaries,
+                           MetricsResetService metrics,
                            @Value("${overwatch.api.allow-reset:true}") boolean allowReset) {
         this.reset = reset;
         this.simulator = simulator;
         this.stats = stats;
         this.summaries = summaries;
+        this.metrics = metrics;
         this.allowReset = allowReset;
         if (!allowReset) {
             log.info("Data reset is disabled (overwatch.api.allow-reset=false)");
@@ -73,14 +79,30 @@ public class AdminController {
                     just tuned should survive clearing the traffic you tuned it
                     against.
 
-                    Prometheus counters are also kept, because they are monotonic by
-                    contract — so straight after a reset the dashboard reads zero
-                    while Grafana still shows the whole run. Both are correct; they
-                    answer different questions.
+                    Prometheus is left alone unless `metrics=true`, because the
+                    application's counters are monotonic by contract and the two
+                    are separate decisions — straight after a data reset the
+                    dashboard reads zero while Grafana still shows the whole run,
+                    and both are correct.
 
-                    Returns the row counts removed. Answers 403 when
-                    `overwatch.api.allow-reset` is false.""")
-    public ResponseEntity<Map<String, Object>> resetData() {
+                    With `metrics=true` this stack's own series are deleted from
+                    the Prometheus TSDB, which is deliberately not the same as
+                    zeroing a counter: forcing a monotonic counter back to zero
+                    makes every rate() across the boundary read as a spike,
+                    whereas removing the series leaves nothing to compute a rate
+                    across and the panels are simply empty until the next scrape.
+                    Only series labelled with this stack's own jobs are touched.
+
+                    Returns the row counts removed, and what happened to the
+                    metrics. Answers 403 when `overwatch.api.allow-reset` is
+                    false; a metrics reset that cannot reach Prometheus is
+                    reported in the body rather than failing the whole call, since
+                    by then the data is already gone.""")
+    public ResponseEntity<Map<String, Object>> resetData(
+            @Parameter(description = "Also delete this stack's series from Prometheus. "
+                    + "Off by default: clearing the store and clearing its history are "
+                    + "separate decisions.")
+            @RequestParam(defaultValue = "false") boolean metrics) {
         if (!allowReset) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
                     "error", "Data reset is disabled on this instance.",
@@ -95,6 +117,14 @@ public class AdminController {
         // clears the store, so both are brought up to date with it.
         stats.invalidate();
         summaries.refresh();
+
+        // Last, and never allowed to fail the call: the rows are already gone by
+        // this point, and a caller told "reset failed" would reasonably try again.
+        MetricsResetService.Outcome metricsOutcome = metrics
+                ? this.metrics.reset()
+                : new MetricsResetService.Outcome(false,
+                        "Prometheus was left alone. Grafana still shows the run "
+                        + "just cleared.");
 
         // Best effort, and deliberately after the truncate. The database is the
         // thing that matters; the simulator's counters are cosmetic, and if it is
@@ -113,8 +143,9 @@ public class AdminController {
         body.put("removed", removed);
         body.put("rulesKept", true);
         body.put("simulatorCountersReset", countersReset);
-        body.put("note", "Prometheus counters are monotonic and were not reset, "
-                + "so Grafana still shows the full run.");
+        body.put("metricsCleared", metricsOutcome.cleared());
+        body.put("metricsAvailable", this.metrics.isAllowed());
+        body.put("note", metricsOutcome.detail());
         return ResponseEntity.ok(body);
     }
 }

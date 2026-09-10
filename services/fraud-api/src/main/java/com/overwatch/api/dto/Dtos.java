@@ -165,4 +165,52 @@ public final class Dtos {
     public record ReplaySample(UUID transactionId, String merchantName,
                                BigDecimal amount, String reason) {
     }
+
+    /**
+     * A threshold sweep: one rule, one parameter, many candidate values.
+     *
+     * <p>Replay answers "what would this threshold have caught". That is the
+     * wrong shape of answer for the question actually being asked, which is
+     * "where should this threshold sit" -- and getting there by replaying one
+     * value at a time means one full pass over the history per value, and a
+     * person holding six numbers in their head to compare them. A sweep is the
+     * curve.
+     *
+     * @param values candidate values for {@code parameter}. Numbers for a numeric
+     *               parameter; the sweep does not interpret them beyond handing
+     *               each one to the rule.
+     */
+    public record SweepRequest(String ruleType, String parameter, List<Object> values,
+                               Map<String, Object> baseParameters, int hours) {
+    }
+
+    public record SweepResult(
+            String ruleType, String parameter, int hoursReplayed,
+            long transactionsEvaluated,
+            /** True when the window held more transactions than replay will read. */
+            boolean capped,
+            List<SweepPoint> points) {
+    }
+
+    /**
+     * One candidate value and what it would have caught.
+     *
+     * <p>{@code firePercentage} rather than only a count, because the count is
+     * meaningless without knowing how many transactions were evaluated -- and the
+     * whole reason to sweep is to compare points against each other.
+     */
+    public record SweepPoint(Object value, long wouldHaveFired, double firePercentage) {
+    }
+
+    /**
+     * What a rule can usefully be swept on, and a sensible ladder to start from.
+     *
+     * <p>Served to the UI so the candidate values are not hardcoded in
+     * JavaScript. A rule with no sweepable parameter says so and says why --
+     * CROSS_BORDER has a country list rather than a number, and VELOCITY cannot
+     * be replayed at all because replay has no card history to count against.
+     */
+    public record Sweepable(String ruleType, String parameter, List<Object> suggested,
+                            String unit, String reason) {
+    }
 }

@@ -146,10 +146,10 @@ Then make the point the table exists for:
 > is probabilistic, and a system that latches on the first hit throws away the
 > difference between one strong signal and five."
 
-**Now show the other end of the range.** Go back to the alert list and find a
-MEDIUM at around 0.35.
+**Now show the other end of the range.** Go back to the alert list, filter to
+`LOW`, and open one — a single-rule hit scoring 0.30 to 0.44.
 
-> "This one tripped a single rule and scored 0.35. Worth an analyst's glance — not
+> "This one tripped a single rule and scored 0.30. Worth an analyst's glance — not
 > worth blocking someone's card in a supermarket queue. A boolean rule engine
 > cannot express that difference, and in production that difference is most of the
 > job: false positives are not free, they are a person whose card stopped working."

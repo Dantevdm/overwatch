@@ -282,6 +282,16 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.retention.time=6h
       - --web.enable-lifecycle
+      # Lets the reset endpoint delete this stack's own series, so "Clear data"
+      # can offer to clear Grafana too rather than leaving the panels showing a
+      # run that no longer exists in the store.
+      #
+      # It is a destructive unauthenticated API, in exactly the same class as
+      # POST /api/admin/reset, and it is on here for exactly the same reason:
+      # this stack exists to be demonstrated. A real deployment drops this flag,
+      # which is one line, and the API's own overwatch.api.allow-metrics-reset
+      # then reports the capability as unavailable rather than failing.
+      - --web.enable-admin-api
     ports:
       - "${OW_PROMETHEUS_PORT:-9090}:9090"
     volumes:

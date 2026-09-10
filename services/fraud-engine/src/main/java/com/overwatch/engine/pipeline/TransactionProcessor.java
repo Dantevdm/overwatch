@@ -112,9 +112,12 @@ public class TransactionProcessor {
         // works over them the same way.
         this.riskScore = DistributionSummary.builder("fraud.risk.score")
                 .description("Composite risk score assigned to each transaction")
-                // 0 to 1 by construction, in tenths, with 0.5 and 0.75 added
-                // because those are where the severity bands actually break.
-                .serviceLevelObjectives(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.9, 1.0)
+                // 0 to 1 by construction, in tenths, with 0.45 added because
+                // the severity bands break at 0.45, 0.60 and 0.80 and the other
+                // two already fall on a tenth. An edge on every band boundary is
+                // what lets a panel answer "are scores piling up just under
+                // HIGH" instead of approximately answering it.
+                .serviceLevelObjectives(0.1, 0.2, 0.3, 0.4, 0.45, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0)
                 .register(meters);
 
         this.amountFlagged = DistributionSummary.builder("fraud.amount.flagged.zar")

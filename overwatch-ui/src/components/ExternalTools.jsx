@@ -1,3 +1,5 @@
+import { IconExternal } from './Icons.jsx';
+
 /**
  * The other web UIs in the stack, pinned to the foot of the sidebar.
  *
@@ -71,7 +73,11 @@ export default function ExternalTools() {
            onMouseEnter={(e) => { e.currentTarget.style.opacity = 1; }}
            onMouseLeave={(e) => { e.currentTarget.style.opacity = 0.72; }}>
           <span>{tool.label}</span>
-          <span aria-hidden="true" style={{ fontSize: 'var(--text-xs)', opacity: 0.7 }}>↗</span>
+          {/* The same stroke set as the navigation icons rather than the ↗
+              character, which renders at whatever weight the system font
+              happens to give it and sat noticeably heavier than everything
+              else in this sidebar. */}
+          <span style={{ opacity: 0.7, display: 'flex' }}><IconExternal /></span>
         </a>
       ))}
     </div>

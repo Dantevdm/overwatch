@@ -43,7 +43,10 @@ class EvaluationTest {
                     hit("ROUND_AMOUNT", 0.15, false)));
 
             assertEquals(0.35, e.riskScore(), DELTA);
-            assertEquals(Severity.MEDIUM, e.severity());
+            // 0.35 is two light rules and sits in the bottom band. LOW starts
+            // at the alert threshold precisely so a score like this has
+            // somewhere to land — see Severity.
+            assertEquals(Severity.LOW, e.severity());
         }
 
         @Test
