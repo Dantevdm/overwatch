@@ -48,6 +48,9 @@ public class ReplayService {
      */
     private static final int REPLAY_LIMIT = 200_000;
 
+    /** Candidates per sweep. See boundedValues for why there is a ceiling. */
+    private static final int MAX_CANDIDATES = 25;
+
     /** Candidate values a sweep should offer, so the UI does not invent them. */
     private static final List<Sweepable> SWEEPABLE = List.of(
             new Sweepable("HIGH_VALUE", "threshold",
@@ -155,46 +158,105 @@ public class ReplayService {
      */
     @Transactional(readOnly = true)
     public SweepResult sweep(SweepRequest request) {
-        FraudRule rule = rulesByType.get(request.ruleType());
+        // Validation is pulled out into three named checks rather than left as
+        // a run of guard clauses. Each one is the answer to a different
+        // question -- is the rule real, is the parameter named, is the ask
+        // bounded -- and reading them as a list is how you can tell at a glance
+        // that all three are still there.
+        FraudRule rule = ruleFor(request.ruleType());
+        String parameter = requiredParameter(request.parameter());
+        List<Object> values = boundedValues(request.values());
+
+        int hours = clampHours(request.hours());
+        Instant since = Instant.now().minus(hours, ChronoUnit.HOURS);
+
+        List<RuleParameters> candidates = candidateParameters(request, parameter, values);
+        long[] fired = new long[candidates.size()];
+        long evaluated = countFirings(rule, candidates, since, fired);
+
+        List<SweepPoint> points = new ArrayList<>(values.size());
+        for (int i = 0; i < values.size(); i++) {
+            points.add(new SweepPoint(values.get(i), fired[i],
+                    evaluated == 0 ? 0 : (double) fired[i] / evaluated * 100));
+        }
+
+        log.info("Sweep of {}.{} over {}h across {} candidates: {} transactions evaluated",
+                request.ruleType(), parameter, hours, values.size(), evaluated);
+
+        return new SweepResult(request.ruleType(), parameter, hours,
+                evaluated, evaluated >= REPLAY_LIMIT, points);
+    }
+
+    private FraudRule ruleFor(String ruleType) {
+        FraudRule rule = rulesByType.get(ruleType);
         if (rule == null) {
             throw new IllegalArgumentException(
-                    "Unknown rule type '" + request.ruleType() + "'. Available: "
+                    "Unknown rule type '" + ruleType + "'. Available: "
                     + rulesByType.keySet());
         }
-        if (request.parameter() == null || request.parameter().isBlank()) {
+        return rule;
+    }
+
+    private static String requiredParameter(String parameter) {
+        if (parameter == null || parameter.isBlank()) {
             throw new IllegalArgumentException("A parameter to sweep is required.");
         }
-        List<Object> values = request.values();
+        return parameter;
+    }
+
+    /**
+     * The candidate list, checked and capped.
+     *
+     * <p>Each candidate is another evaluation of every row, so the cost is rows
+     * times candidates. Without the cap a caller can ask for a million of them
+     * by editing a JSON body, and the request would hold a database connection
+     * for the rest of the afternoon.
+     */
+    private static List<Object> boundedValues(List<Object> values) {
         if (values == null || values.isEmpty()) {
             throw new IllegalArgumentException("At least one candidate value is required.");
         }
-        // Bounded. Each candidate is another evaluation of every row, so the cost
-        // is rows x candidates and a caller should not be able to ask for a
-        // million of them by editing a JSON body.
-        if (values.size() > 25) {
+        if (values.size() > MAX_CANDIDATES) {
             throw new IllegalArgumentException(
-                    "At most 25 candidate values; asked for " + values.size() + ".");
+                    "At most " + MAX_CANDIDATES + " candidate values; asked for "
+                    + values.size() + ".");
         }
+        return values;
+    }
 
-        int hours = Math.max(1, Math.min(request.hours() <= 0 ? 24 : request.hours(), MAX_HOURS));
-        Instant since = Instant.now().minus(hours, ChronoUnit.HOURS);
+    private static int clampHours(int requested) {
+        return Math.max(1, Math.min(requested <= 0 ? 24 : requested, MAX_HOURS));
+    }
 
+    /**
+     * Parameters built once per candidate, outside the row loop.
+     *
+     * <p>Building them per row would dominate the measurement and tell you
+     * about RuleParameters rather than about the rule.
+     */
+    private static List<RuleParameters> candidateParameters(
+            SweepRequest request, String parameter, List<Object> values) {
         Map<String, Object> base = new LinkedHashMap<>(
                 request.baseParameters() == null ? Map.of() : request.baseParameters());
-
-        // Parameters built once per candidate, outside the row loop. Building
-        // them per row would dominate the measurement and tell you about
-        // RuleParameters rather than about the rule.
-        List<RuleParameters> candidates = values.stream().map(value -> {
+        return values.stream().map(value -> {
             Map<String, Object> merged = new LinkedHashMap<>(base);
-            merged.put(request.parameter(), value);
+            merged.put(parameter, value);
             return RuleParameters.of(merged);
         }).toList();
+    }
 
+    /**
+     * One pass over the window, every candidate scored against every row.
+     *
+     * <p>Fills {@code fired} and returns how many transactions were read. Seven
+     * thresholds cost one trip through the data rather than seven, which is the
+     * whole reason this endpoint exists instead of the caller looping over
+     * replay.
+     */
+    private long countFirings(FraudRule rule, List<RuleParameters> candidates,
+                              Instant since, long[] fired) {
         TransactionHistory noHistory = inertHistory();
-        long[] fired = new long[candidates.size()];
         long evaluated = 0;
-
         for (TransactionEntity entity : window(since)) {
             Transaction txn = toDomain(entity);
             evaluated++;
@@ -204,19 +266,7 @@ public class ReplayService {
                 }
             }
         }
-
-        long total = evaluated;
-        List<SweepPoint> points = new ArrayList<>(values.size());
-        for (int i = 0; i < values.size(); i++) {
-            points.add(new SweepPoint(values.get(i), fired[i],
-                    total == 0 ? 0 : (double) fired[i] / total * 100));
-        }
-
-        log.info("Sweep of {}.{} over {}h across {} candidates: {} transactions evaluated",
-                request.ruleType(), request.parameter(), hours, values.size(), evaluated);
-
-        return new SweepResult(request.ruleType(), request.parameter(), hours,
-                evaluated, evaluated >= REPLAY_LIMIT, points);
+        return evaluated;
     }
 
     /**

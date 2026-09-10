@@ -511,6 +511,18 @@ public class StreamsService {
                 "Could not " + verb + " the broker — " + rootCause(e));
     }
 
+    /**
+     * The innermost message in an exception chain, which is the one that says
+     * what actually went wrong — the outer layers say "could not send".
+     *
+     * <p>The identity comparison is deliberate and {@code equals} would be
+     * wrong here. It guards against a throwable whose cause is itself, which
+     * some client libraries produce and which would otherwise spin this loop
+     * forever; the question being asked is "is this the same object", not "is
+     * this an equal exception". Two distinct-but-equal throwables should keep
+     * unwrapping.
+     */
+    @SuppressWarnings("PMD.CompareObjectsWithEquals")
     private static String rootCause(Throwable t) {
         Throwable cause = t;
         while (cause.getCause() != null && cause.getCause() != cause) cause = cause.getCause();

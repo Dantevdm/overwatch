@@ -409,12 +409,6 @@ public class CustomerService {
         return hour >= 1 && hour < 5;
     }
 
-    private long alertsFor(String customerId) {
-        return alerts.countBySeverityForCustomer(customerId).stream()
-                .mapToLong(row -> ((Number) row[1]).longValue())
-                .sum();
-    }
-
     // ---- mapping -------------------------------------------------------------
 
     private static AlertLine toAlertLine(FraudAlertEntity a) {

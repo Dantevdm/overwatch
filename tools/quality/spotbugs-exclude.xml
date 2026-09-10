@@ -13,7 +13,19 @@
          a record IS, and an entity's accessors are how JPA and Jackson read it.
          EI_EXPOSE_REP fires on every accessor that returns a mutable reference,
          which here is most of them. Defensive copies are made on the way IN
-         (see the entity constructors), which is where it actually matters. -->
+         (see the entity constructors), which is where it actually matters.
+
+         The API's response records have no "way in" at all: each is built once,
+         from a list the service has just constructed, and handed straight to
+         Jackson. A copy in a compact constructor would duplicate every list on
+         every request to defend against a caller that does not exist.
+
+         Matched by name as well as by package. Keying this rule to package
+         names alone is what broke the build twice: api.customer and api.streams
+         were new packages holding exactly the same kind of record, and the gate
+         failed on code that was correct. The convention in this codebase is
+         that a response type is a *View or lives in a dto package, so that is
+         what the rule now says. -->
     <Match>
         <Or>
             <Package name="~com\.overwatch\.common\.domain.*"/>
@@ -21,6 +33,8 @@
             <Package name="~com\.overwatch\.api\.dto.*"/>
             <Package name="~com\.overwatch\.engine\.rule.*"/>
             <Package name="~com\.overwatch\.simulator\.data.*"/>
+            <!-- CustomerView, StreamsView and their nested records. -->
+            <Class name="~com\.overwatch\..*View(\$.*)?"/>
         </Or>
         <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
     </Match>
@@ -35,7 +49,7 @@
         <Or>
             <Package name="~com\.overwatch\.simulator\.(api|service|generate)"/>
             <Package name="~com\.overwatch\.engine\.(pipeline|config|persistence).*"/>
-            <Package name="~com\.overwatch\.api\.(web|service|repository|simulator)"/>
+            <Package name="~com\.overwatch\.api\.(web|service|repository|simulator|customer|streams)"/>
         </Or>
         <Bug pattern="EI_EXPOSE_REP2"/>
     </Match>
