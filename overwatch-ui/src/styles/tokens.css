@@ -1,6 +1,14 @@
 /* ============================================================================
    Overwatch — Design Tokens
-   Derived from the i1 Design System foundations (Platform UI Kit).
+   Derived from the i1 Design System foundations (Platform UI Kit), palette
+   retuned to Capitec's public brand: navy as the structural colour, red as the
+   single accent, white as the ground.
+
+   On the brand: the hexes below are matched by eye from public material, and
+   the logo mark in Brand.jsx is drawn rather than dropped in. Neither is an
+   official asset. If this is ever shown to Capitec, replace both from the real
+   brand guide — an approximation is fine for a demo and wrong for anything
+   that represents them.
 
    This is the single source of truth for colour, typography, spacing, radius,
    shadow and layout across the Overwatch dashboard. Import it once at the app
@@ -15,16 +23,27 @@
    ========================================================================= */
 
 :root {
-  /* --- Brand ramp ------------------------------------------------------- */
-  --brand:          #0067a0;
-  --brand-hover:    #005585;
-  --brand-active:   #00456b;
-  --brand-80:       #3385b3;
-  --brand-60:       #66a4c6;
-  --brand-40:       #99c2d9;
-  --brand-20:       #cce1ec;
+  /* --- Brand ramp — Capitec navy ---------------------------------------- */
+  --brand:          #002e5f;
+  --brand-hover:    #003d7a;
+  --brand-active:   #001f42;
+  --brand-80:       #33587f;
+  --brand-60:       #66829f;
+  --brand-40:       #99abbf;
+  --brand-20:       #ccd5df;
   --brand-fg:       #ffffff;
-  --brand-gradient: linear-gradient(to top right, #0067a0 0%, #2f9bd4 100%);
+  --brand-gradient: linear-gradient(to top right, #001f42 0%, #0a4c8b 100%);
+
+  /* --- Accent — Capitec red ----------------------------------------------
+     One accent, used sparingly: the logo's arc, the active-nav marker, a
+     primary action. It is deliberately NOT the colour of ordinary chart
+     series. In a fraud console red already means "something is wrong", and a
+     brand that spends red on decoration has nothing left to say it with.
+     ---------------------------------------------------------------------- */
+  --accent:        #d6001c;
+  --accent-hover:  #b30017;
+  --accent-fg:     #ffffff;
+  --accent-20:     #f7ccd1;
 
   /* --- Neutrals / surfaces ---------------------------------------------- */
   --bg:           #ffffff;   /* cards, panels, elevated surfaces */
@@ -39,8 +58,8 @@
   --success-bg: #ecfdf5;  --success-fg: #047857;  --success-border: #6ee7b7;
   --warning-bg: #fffbeb;  --warning-fg: #b45309;  --warning-border: #fcd34d;
   --info-bg:    #f0f9ff;  --info-fg:    #0369a1;  --info-border:    #7dd3fc;
-  --danger-bg:  #fff1f2;  --danger-fg:  #be123c;  --danger-border:  #fecdd3;
-  --danger:     #f43f5e;
+  --danger-bg:  #fff1f2;  --danger-fg:  #b3001b;  --danger-border:  #f7ccd1;
+  --danger:     #d6001c;
 
   /* --- Chart palette ------------------------------------------------------
      Single-series marks (alerts over time, rule bars) use the brand blue.
@@ -53,15 +72,17 @@
      separation and light-end contrast against the surface they render on.
      Segments are direct-labelled as well, so severity never rests on hue alone.
      ---------------------------------------------------------------------- */
-  --chart-1: #0067a0;
-  --chart-2: #2f9bd4;
-  --chart-3: #66a4c6;
-  --chart-4: #99c2d9;
+  --chart-1: #002e5f;
+  --chart-2: #0a4c8b;
+  --chart-3: #4a7fae;
+  --chart-4: #8fb0cb;
 
-  --sev-low:      #f87186;
-  --sev-medium:   #ef4462;
-  --sev-high:     #c81e42;
-  --sev-critical: #8f1030;
+  /* Stepped on the brand red rather than the old rose, so the one ordinal
+     scale in the product and the one accent in the brand are the same hue. */
+  --sev-low:      #f4a7ae;
+  --sev-medium:   #e46a75;
+  --sev-high:     #c8102e;
+  --sev-critical: #7d0a1d;
 
   --grid:     #e2e8f0;
   --axis:     #cbd5e1;
@@ -124,28 +145,34 @@
     --border:       #334155;
     --input-border: #475569;
 
-    --brand:          #3b9fd6;
-    --brand-hover:    #5bb3e0;
-    --brand-20:       #1a3a52;
-    --brand-gradient: linear-gradient(to top right, #1a5276 0%, #2980b9 100%);
-    --side-bg:        #0c2d48;
+    --brand:          #4f8fc4;
+    --brand-hover:    #6ba4d3;
+    --brand-20:       #12314f;
+    --brand-gradient: linear-gradient(to top right, #001f42 0%, #0a4c8b 100%);
+    --side-bg:        #001f42;
+
+    /* Lifted off the print red, which reads almost black on a dark surface. */
+    --accent:        #ff4d5e;
+    --accent-hover:  #ff6f7d;
+    --accent-fg:     #1a0003;
+    --accent-20:     #4a0710;
 
     --success-bg: #064e3b;  --success-fg: #6ee7b7;  --success-border: #047857;
     --warning-bg: #451a03;  --warning-fg: #fcd34d;  --warning-border: #b45309;
     --info-bg:    #0c4a6e;  --info-fg:    #7dd3fc;  --info-border:    #0369a1;
-    --danger-bg:  #4c0519;  --danger-fg:  #fecdd3;  --danger-border:  #be123c;
-    --danger:     #fb7185;
+    --danger-bg:  #3d060d;  --danger-fg:  #ffd3d8;  --danger-border:  #a3121f;
+    --danger:     #ff4d5e;
 
-    --chart-1: #3b9fd6;
-    --chart-2: #5bb3e0;
-    --chart-3: #7cc8ea;
-    --chart-4: #9dd8f0;
+    --chart-1: #4f8fc4;
+    --chart-2: #6ba4d3;
+    --chart-3: #8fbde1;
+    --chart-4: #b3d3ec;
 
     /* Selected for the dark surface, not flipped from light. */
-    --sev-low:      #fecdd3;
-    --sev-medium:   #fda4af;
-    --sev-high:     #f87186;
-    --sev-critical: #e73b5c;
+    --sev-low:      #ffd3d8;
+    --sev-medium:   #ffa3ac;
+    --sev-high:     #ff6f7d;
+    --sev-critical: #e5303f;
 
     --grid:     #1e293b;
     --axis:     #334155;
@@ -163,28 +190,33 @@
   --border:       #334155;
   --input-border: #475569;
 
-  --brand:          #3b9fd6;
-  --brand-hover:    #5bb3e0;
-  --brand-20:       #1a3a52;
-  --brand-gradient: linear-gradient(to top right, #1a5276 0%, #2980b9 100%);
-  --side-bg:        #0c2d48;
+  --brand:          #4f8fc4;
+  --brand-hover:    #6ba4d3;
+  --brand-20:       #12314f;
+  --brand-gradient: linear-gradient(to top right, #001f42 0%, #0a4c8b 100%);
+  --side-bg:        #001f42;
+
+  --accent:        #ff4d5e;
+  --accent-hover:  #ff6f7d;
+  --accent-fg:     #1a0003;
+  --accent-20:     #4a0710;
 
   --success-bg: #064e3b;  --success-fg: #6ee7b7;  --success-border: #047857;
   --warning-bg: #451a03;  --warning-fg: #fcd34d;  --warning-border: #b45309;
   --info-bg:    #0c4a6e;  --info-fg:    #7dd3fc;  --info-border:    #0369a1;
-  --danger-bg:  #4c0519;  --danger-fg:  #fecdd3;  --danger-border:  #be123c;
-  --danger:     #fb7185;
+  --danger-bg:  #3d060d;  --danger-fg:  #ffd3d8;  --danger-border:  #a3121f;
+  --danger:     #ff4d5e;
 
-  --chart-1: #3b9fd6;
-  --chart-2: #5bb3e0;
-  --chart-3: #7cc8ea;
-  --chart-4: #9dd8f0;
+  --chart-1: #4f8fc4;
+  --chart-2: #6ba4d3;
+  --chart-3: #8fbde1;
+  --chart-4: #b3d3ec;
 
   /* Selected for the dark surface, not flipped from light. */
-  --sev-low:      #fecdd3;
-  --sev-medium:   #fda4af;
-  --sev-high:     #f87186;
-  --sev-critical: #e73b5c;
+  --sev-low:      #ffd3d8;
+  --sev-medium:   #ffa3ac;
+  --sev-high:     #ff6f7d;
+  --sev-critical: #e5303f;
 
   --grid:     #1e293b;
   --axis:     #334155;

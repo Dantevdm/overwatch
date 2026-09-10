@@ -1,0 +1,62 @@
+/* ============================================================================
+   Motion — the handful of keyframes the shell needs.
+
+   Kept out of tokens.css, which is values only, and out of the components,
+   because @keyframes cannot be expressed in a React inline style object.
+
+   Everything here is decorative: a spinner, a bar filling, things fading in.
+   Under prefers-reduced-motion every animation collapses to a single static
+   frame rather than being merely slowed down — the block at the bottom is the
+   whole policy, and it is the reason none of these animations carry
+   information that is lost when they stop.
+   ========================================================================= */
+
+@keyframes ow-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* The splash progress bar. Deliberately eased and non-linear: the first third
+   of the bar covers the module graph parsing, which is fast, and the rest is
+   waiting on the first API response, which is not. A linear bar that reaches
+   90% and stops reads as a stall. */
+@keyframes ow-fill {
+  0%   { transform: scaleX(0.04); }
+  35%  { transform: scaleX(0.55); }
+  70%  { transform: scaleX(0.78); }
+  100% { transform: scaleX(0.94); }
+}
+
+@keyframes ow-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes ow-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* A slow sweep across the navy ground behind the splash lockup. One gradient
+   moving, no layout, no repaint of anything above it. */
+@keyframes ow-sweep {
+  from { transform: translateX(-60%); }
+  to   { transform: translateX(160%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Not "shorter" — off. The animation-name reset is what actually stops a
+     spinner rather than spinning it very slowly, and the final frame is the
+     one that looks intentional at rest. */
+  .ow-spin, .ow-fill, .ow-fade-in, .ow-rise, .ow-sweep {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+.ow-spin    { animation: ow-spin 900ms linear infinite; transform-origin: 50% 50%; }
+.ow-fill    { animation: ow-fill 2.4s cubic-bezier(.22,.75,.28,1) forwards;
+              transform-origin: left center; }
+.ow-fade-in { animation: ow-fade-in 320ms ease-out both; }
+.ow-rise    { animation: ow-rise 380ms cubic-bezier(.21,.78,.35,1) both; }
+.ow-sweep   { animation: ow-sweep 3.2s ease-in-out infinite; }
