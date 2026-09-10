@@ -8,8 +8,10 @@ import com.overwatch.api.customer.CustomerView.Slice;
 import com.overwatch.api.customer.CustomerView.Summary;
 import com.overwatch.api.customer.CustomerView.TransactionLine;
 import com.overwatch.api.repository.AlertRepository;
+import com.overwatch.api.repository.CardholderSummaryRepository;
 import com.overwatch.api.repository.TransactionReadRepository;
 import com.overwatch.common.persistence.AlertRuleHitEntity;
+import com.overwatch.common.persistence.CardholderSummaryEntity;
 import com.overwatch.common.persistence.FraudAlertEntity;
 import com.overwatch.common.persistence.TransactionEntity;
 import org.springframework.data.domain.Page;
@@ -85,16 +87,33 @@ public class CustomerService {
 
     private final TransactionReadRepository transactions;
     private final AlertRepository alerts;
+    private final CardholderSummaryRepository summaries;
 
-    public CustomerService(TransactionReadRepository transactions, AlertRepository alerts) {
+    public CustomerService(TransactionReadRepository transactions, AlertRepository alerts,
+                           CardholderSummaryRepository summaries) {
         this.transactions = transactions;
         this.alerts = alerts;
+        this.summaries = summaries;
     }
 
-    /** Cardholders observed, most active first, optionally filtered by name or id. */
+    /**
+     * Cardholders observed, most active first, optionally filtered by name or id.
+     *
+     * <p>Read from {@code cardholder_summary} rather than aggregated live. The
+     * live version grouped every transaction in the table on every request --
+     * about 92ms at 450 000 rows and measurably worse an hour later -- and paid
+     * that cost once per reader. See V7 for the view and what it trades away:
+     * a cardholder first seen since the last refresh is not listed yet. Their
+     * profile is, because {@link #profile} reads the transactions directly.
+     *
+     * <p>Alert counts still come from the alerts table. They are deliberately not
+     * in the view: it would have to join alerts to transactions, and a refresh
+     * would then be invalidated by every alert as well as every transaction,
+     * which is most of what this system does.
+     */
     @Transactional(readOnly = true)
     public Page<Summary> search(String query, Pageable pageable) {
-        Page<Object[]> rows = transactions.searchCustomers(likePattern(query), pageable);
+        Page<CardholderSummaryEntity> rows = summaries.search(likePattern(query), pageable);
 
         // Alert counts for the whole page in one query, then looked up per row.
         //
@@ -104,25 +123,23 @@ public class CustomerService {
         // quietly several times too large. But counting them one row at a time
         // was an N+1 -- eleven queries to render ten rows, and fifty-one to
         // render fifty.
-        List<String> ids = rows.getContent().stream().map(row -> (String) row[0]).toList();
+        List<String> ids = rows.getContent().stream()
+                .map(CardholderSummaryEntity::getCustomerId).toList();
         Map<String, Long> alertCounts = ids.isEmpty() ? Map.of() : alerts.countByCustomers(ids)
                 .stream()
                 .collect(Collectors.toMap(row -> (String) row[0],
                                           row -> ((Number) row[1]).longValue()));
 
-        return rows.map(row -> {
-            String id = (String) row[0];
-            return new Summary(
-                    id,
-                    (String) row[1],
-                    ((Number) row[2]).longValue(),
-                    (BigDecimal) row[3],
-                    (Instant) row[4],
-                    ((Number) row[5]).intValue(),
-                    // Absent means none: a cardholder with no alerts has no row
-                    // in a GROUP BY over alerts.
-                    alertCounts.getOrDefault(id, 0L));
-        });
+        return rows.map(row -> new Summary(
+                row.getCustomerId(),
+                row.getCustomerName(),
+                row.getTransactions(),
+                row.getTotalSpend(),
+                row.getLastSeen(),
+                row.getCards(),
+                // Absent means none: a cardholder with no alerts has no row in a
+                // GROUP BY over alerts.
+                alertCounts.getOrDefault(row.getCustomerId(), 0L)));
     }
 
     /**

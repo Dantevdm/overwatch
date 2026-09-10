@@ -24,8 +24,23 @@ overwatch:
     fraud-injection-rate: 0.08
     # Distinct cards in circulation. This is the velocity rule's sizing knob:
     # velocity is a property of a card, so this against the rate above decides
-    # whether that rule discriminates or fires on everything.
-    card-pool-size: 2000
+    # whether that rule discriminates or fires on everything. It was 2000, and at
+    # 2000 it fired on everything -- 93% of every alert raised was one MEDIUM
+    # VELOCITY. The arithmetic, since it is the kind that is easier to check than
+    # to re-derive:
+    #
+    #   5 txn/s over the rule's 10-minute window   = 3 000 transactions
+    #   4 000 cards                                 = 0.75 per card on average
+    #
+    # But traffic is not spread evenly. A cardholder's activity weight runs to
+    # 2.1x the mean (CustomerBook), and a holder with one card takes their whole
+    # share on it where the average holder spreads it over 1.6 -- so the busiest
+    # cards see about 3.4x the average, or lambda 2.5. Poisson(2.5) exceeds five
+    # in a window about 4% of the time, against 45% at the old pool size. The
+    # rule now fires on bursts and on the occasional genuinely busy card, which
+    # is a false-positive rate rather than a flood -- and a rule with no false
+    # positives at all would make the disposition workflow pointless.
+    card-pool-size: 4000
 
     # A backfill of past spending, published once on startup.
     #
@@ -43,6 +58,11 @@ overwatch:
     # Backdated transactions cannot trip velocity, which counts inside a
     # ten-minute window -- so seeding thirty days of history is not a burst as
     # far as any rule is concerned, whatever it looks like on a throughput chart.
+    #
+    # 4 000 cards x 30 days x Poisson(1.4) is about 168 000 messages, published in
+    # a couple of seconds. Worth stating because it scales with all three: the
+    # cap on history-per-card-per-day exists so a typo in one of them cannot
+    # publish ten million.
     seed-history: true
     history-days: 30
     history-per-card-per-day: 1.4

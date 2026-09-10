@@ -3,6 +3,7 @@ package com.overwatch.api;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * Backend-for-frontend over the fraud data store: transactions, alerts, rule
@@ -24,6 +25,9 @@ import org.springframework.boot.persistence.autoconfigure.EntityScan;
         "com.overwatch.api",
         "com.overwatch.engine.rule"
 })
+// For the cardholder summary refresh. This service has one scheduled job; the
+// engine and simulator each enable their own.
+@EnableScheduling
 // Boot 4 modularisation moved this out of ...autoconfigure.domain.
 @EntityScan("com.overwatch.common.persistence")
 public class FraudApiApplication {

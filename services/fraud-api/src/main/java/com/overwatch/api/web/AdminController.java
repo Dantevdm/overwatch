@@ -1,5 +1,6 @@
 package com.overwatch.api.web;
 
+import com.overwatch.api.customer.CardholderSummaryRefresher;
 import com.overwatch.api.service.DataResetService;
 import com.overwatch.api.service.StatsService;
 import com.overwatch.api.simulator.SimulatorGateway;
@@ -42,15 +43,18 @@ public class AdminController {
     private final DataResetService reset;
     private final SimulatorGateway simulator;
     private final StatsService stats;
+    private final CardholderSummaryRefresher summaries;
     private final boolean allowReset;
 
     public AdminController(DataResetService reset,
                            SimulatorGateway simulator,
                            StatsService stats,
+                           CardholderSummaryRefresher summaries,
                            @Value("${overwatch.api.allow-reset:true}") boolean allowReset) {
         this.reset = reset;
         this.simulator = simulator;
         this.stats = stats;
+        this.summaries = summaries;
         this.allowReset = allowReset;
         if (!allowReset) {
             log.info("Data reset is disabled (overwatch.api.allow-reset=false)");
@@ -85,10 +89,12 @@ public class AdminController {
 
         Map<String, Long> removed = reset.reset();
 
-        // The dashboard's aggregates are cached for a couple of seconds. That is
-        // invisible while data is arriving and glaring right after someone clears
-        // the store, so the cache goes with it.
+        // The dashboard's aggregates are cached for a couple of seconds and the
+        // cardholder directory is a view refreshed every thirty. Both are
+        // invisible while data is arriving and glaring right after someone
+        // clears the store, so both are brought up to date with it.
         stats.invalidate();
+        summaries.refresh();
 
         // Best effort, and deliberately after the truncate. The database is the
         // thing that matters; the simulator's counters are cosmetic, and if it is

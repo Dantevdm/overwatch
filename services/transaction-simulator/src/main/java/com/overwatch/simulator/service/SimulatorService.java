@@ -339,9 +339,29 @@ public class SimulatorService {
         }
     }
 
+    /** Total of every pattern's weight. Computed once; the enum cannot change. */
+    private static final int PATTERN_WEIGHT_TOTAL = Arrays.stream(FraudPattern.values())
+            .mapToInt(FraudPattern::injectionWeight)
+            .sum();
+
+    /**
+     * A pattern to inject, weighted rather than uniform.
+     *
+     * <p>See {@link FraudPattern#injectionWeight()}: one VELOCITY_BURST is
+     * several alerts, so picking uniformly meant one rule accounting for most of
+     * the alert list.
+     */
     private static FraudPattern randomPattern() {
-        FraudPattern[] all = FraudPattern.values();
-        return all[ThreadLocalRandom.current().nextInt(all.length)];
+        int roll = ThreadLocalRandom.current().nextInt(PATTERN_WEIGHT_TOTAL);
+        for (FraudPattern pattern : FraudPattern.values()) {
+            roll -= pattern.injectionWeight();
+            if (roll < 0) {
+                return pattern;
+            }
+        }
+        // Unreachable: the weights sum to PATTERN_WEIGHT_TOTAL, so the loop
+        // always returns. Present because the compiler cannot know that.
+        return FraudPattern.COMPOUND;
     }
 
     // ---- control -----------------------------------------------------------
