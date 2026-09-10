@@ -1,6 +1,7 @@
 package com.overwatch.api.web;
 
 import com.overwatch.api.service.DataResetService;
+import com.overwatch.api.service.StatsService;
 import com.overwatch.api.simulator.SimulatorGateway;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -40,13 +41,16 @@ public class AdminController {
 
     private final DataResetService reset;
     private final SimulatorGateway simulator;
+    private final StatsService stats;
     private final boolean allowReset;
 
     public AdminController(DataResetService reset,
                            SimulatorGateway simulator,
+                           StatsService stats,
                            @Value("${overwatch.api.allow-reset:true}") boolean allowReset) {
         this.reset = reset;
         this.simulator = simulator;
+        this.stats = stats;
         this.allowReset = allowReset;
         if (!allowReset) {
             log.info("Data reset is disabled (overwatch.api.allow-reset=false)");
@@ -80,6 +84,11 @@ public class AdminController {
         }
 
         Map<String, Long> removed = reset.reset();
+
+        // The dashboard's aggregates are cached for a couple of seconds. That is
+        // invisible while data is arriving and glaring right after someone clears
+        // the store, so the cache goes with it.
+        stats.invalidate();
 
         // Best effort, and deliberately after the truncate. The database is the
         // thing that matters; the simulator's counters are cosmetic, and if it is

@@ -20,6 +20,40 @@ services:
       POSTGRES_DB: overwatch
       POSTGRES_USER: overwatch
       POSTGRES_PASSWORD: overwatch
+    # Defaults tuned for the shape of this workload rather than left alone.
+    #
+    # work_mem 4MB was where the cardholder directory's GROUP BY spilled 21MB to
+    # disk as an external merge. V6's covering index removes that sort entirely,
+    # but every other aggregate on the dashboard sorts too, and 16MB is what
+    # keeps them in memory at this data size. It is per sort node, not per
+    # connection, so the pool's 20 connections could in theory each use several
+    # -- fine against the 2GB this container is allowed, and the API is the only
+    # thing issuing these queries.
+    #
+    # shared_buffers 256MB holds the whole working set: transactions and alerts
+    # together are about 220MB of heap and index, and the point of a demo is
+    # that the second poll is not measuring disk.
+    command:
+      - postgres
+      - -c
+      - work_mem=16MB
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=1GB
+      # Every query here reads from a container-local volume on an SSD. The
+      # default random_page_cost of 4 is calibrated for a spinning disk and is
+      # what makes the planner prefer a sequential scan to an index it should be
+      # using.
+      - -c
+      - random_page_cost=1.1
+    # Bounded, so a runaway query cannot take the machine down with it, and so
+    # the numbers in the performance notes mean something on someone else's
+    # laptop.
+    deploy:
+      resources:
+        limits:
+          memory: 2G
     # No host binding. Only the engine and API talk to Postgres, and they do so
     # over the compose network. docker-compose.tools.yml exposes it for DBeaver.
     volumes:

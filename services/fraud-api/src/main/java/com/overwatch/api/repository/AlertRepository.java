@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -78,6 +79,30 @@ public interface AlertRepository extends JpaRepository<FraudAlertEntity, UUID> {
             GROUP BY a.severity
             """)
     List<Object[]> countBySeverityForCustomer(@Param("customerId") String customerId);
+
+    /**
+     * Alert counts for a page of cardholders, in one query.
+     *
+     * <p>The directory used to call {@link #countBySeverityForCustomer} once per
+     * row. Each call is a few milliseconds, which looked harmless and was a
+     * textbook N+1: ten rows meant eleven queries and about 70ms of the
+     * directory's response time, and asking for fifty rows made it worse in
+     * exact proportion to how much the reader wanted to see.
+     *
+     * <p>An explicit join rather than the {@code IN (SELECT ...)} the single-
+     * customer version uses, because the grouping key lives on the transaction
+     * and a subquery cannot be grouped by. There is no association between the
+     * two entities to navigate -- an alert holds a transaction id, and that is
+     * deliberate, see V4 -- so the join condition is spelled out.
+     */
+    @Query("""
+            SELECT t.customerId, COUNT(a)
+            FROM FraudAlertEntity a
+            JOIN TransactionEntity t ON t.id = a.transactionId
+            WHERE t.customerId IN :customerIds
+            GROUP BY t.customerId
+            """)
+    List<Object[]> countByCustomers(@Param("customerIds") Collection<String> customerIds);
 
     @Query("""
             SELECT COALESCE(SUM(a.amount), 0) FROM FraudAlertEntity a

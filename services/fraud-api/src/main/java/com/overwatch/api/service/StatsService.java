@@ -7,9 +7,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /** Aggregations behind the dashboard. */
 @Service
@@ -41,6 +43,21 @@ public class StatsService {
 
     /** Buckets to aim for. Enough to show a shape, few enough to stay readable. */
     private static final int TARGET_BUCKETS = 40;
+
+    /**
+     * How long a computed dashboard stays good for.
+     *
+     * <p>Shorter than the UI's five-second poll, so a reader who reloads still
+     * sees a fresh figure, and long enough that several readers polling out of
+     * phase share one computation.
+     */
+    private static final Duration CACHE_TTL = Duration.ofSeconds(2);
+
+    /**
+     * Range to last computed answer. At most seven entries -- one per range the
+     * UI offers -- so it needs no eviction beyond being overwritten.
+     */
+    private final Map<Integer, Cached> cache = new ConcurrentHashMap<>();
 
     private final AlertRepository alerts;
     private final TransactionReadRepository transactions;
@@ -85,13 +102,64 @@ public class StatsService {
         return Instant.ofEpochSecond(Math.floorDiv(t.getEpochSecond(), bucketSeconds) * bucketSeconds);
     }
 
-    @Transactional(readOnly = true)
     public DashboardStats dashboard() {
         return dashboard(DEFAULT_RANGE_MINUTES);
     }
 
-    @Transactional(readOnly = true)
+    /**
+     * The dashboard, from cache if it was computed within {@link #CACHE_TTL}.
+     *
+     * <p>This method is eleven aggregates, four of which read every row of a
+     * table: total transactions, total alerts, the mean risk score, the open
+     * count. Measured against 350 000 transactions and 200 000 alerts it is
+     * about 215ms, and the browser asks for it every five seconds -- per open
+     * tab, and the shell polls it as well for the sidebar badge, so two tabs is
+     * three calls every five seconds and 130ms of database time a second spent
+     * recomputing figures that were already right.
+     *
+     * <p>Two seconds of cache collapses that to one computation per window
+     * regardless of how many readers there are, and cannot be noticed by any of
+     * them: the number on screen is already up to five seconds old by the time
+     * it is drawn. Keyed by range, because each range is a different question.
+     *
+     * <p>Deliberately not Spring's caching abstraction. That would mean a cache
+     * manager, an eviction policy expressed in configuration, and a dependency,
+     * to hold at most seven small records for two seconds each.
+     */
     public DashboardStats dashboard(int requestedRangeMinutes) {
+        int rangeMinutes = clampRange(requestedRangeMinutes);
+        Instant now = Instant.now();
+
+        Cached hit = cache.get(rangeMinutes);
+        if (hit != null && hit.computedAt().isAfter(now.minus(CACHE_TTL))) {
+            return hit.stats();
+        }
+        DashboardStats fresh = computeDashboard(rangeMinutes);
+        cache.put(rangeMinutes, new Cached(fresh, now));
+        return fresh;
+    }
+
+    /**
+     * Throw the cache away.
+     *
+     * <p>Called by the reset endpoint. Two seconds of staleness is invisible on
+     * a polling dashboard and glaring immediately after someone presses a button
+     * labelled "Clear data" -- the whole point of that button is that the figures
+     * go to zero while you are looking at them.
+     */
+    public void invalidate() {
+        cache.clear();
+    }
+
+    /**
+     * One cached answer. A record rather than two parallel maps, so a stats
+     * value and the time it was computed cannot get out of step.
+     */
+    private record Cached(DashboardStats stats, Instant computedAt) {
+    }
+
+    @Transactional(readOnly = true)
+    public DashboardStats computeDashboard(int requestedRangeMinutes) {
         int rangeMinutes = clampRange(requestedRangeMinutes);
         long bucketSeconds = bucketSecondsFor(rangeMinutes);
 

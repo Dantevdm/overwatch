@@ -34,6 +34,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * The cardholder 360 view: one person, everything observed about them.
@@ -95,6 +96,20 @@ public class CustomerService {
     public Page<Summary> search(String query, Pageable pageable) {
         Page<Object[]> rows = transactions.searchCustomers(likePattern(query), pageable);
 
+        // Alert counts for the whole page in one query, then looked up per row.
+        //
+        // Still not folded into the grouped query above: adding alerts to that
+        // GROUP BY would multiply each cardholder's transaction count by the
+        // number of alerts it raised, the classic fan-out that makes a figure
+        // quietly several times too large. But counting them one row at a time
+        // was an N+1 -- eleven queries to render ten rows, and fifty-one to
+        // render fifty.
+        List<String> ids = rows.getContent().stream().map(row -> (String) row[0]).toList();
+        Map<String, Long> alertCounts = ids.isEmpty() ? Map.of() : alerts.countByCustomers(ids)
+                .stream()
+                .collect(Collectors.toMap(row -> (String) row[0],
+                                          row -> ((Number) row[1]).longValue()));
+
         return rows.map(row -> {
             String id = (String) row[0];
             return new Summary(
@@ -104,12 +119,9 @@ public class CustomerService {
                     (BigDecimal) row[3],
                     (Instant) row[4],
                     ((Number) row[5]).intValue(),
-                    // Counted per row rather than joined into the grouped query.
-                    // Adding alerts to that GROUP BY would multiply the
-                    // transaction count by the number of alerts each raised,
-                    // which is the classic fan-out that makes a dashboard figure
-                    // quietly several times too large.
-                    alertsFor(id));
+                    // Absent means none: a cardholder with no alerts has no row
+                    // in a GROUP BY over alerts.
+                    alertCounts.getOrDefault(id, 0L));
         });
     }
 
