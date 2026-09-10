@@ -251,7 +251,7 @@ public class TransactionProcessor {
     private static TransactionEntity toEntity(Transaction t) {
         return new TransactionEntity(
                 t.id() == null ? UUID.randomUUID() : t.id(),
-                t.cardId(), t.amount(),
+                t.cardId(), t.customerId(), t.customerName(), t.amount(),
                 t.currency() == null ? Transaction.DEFAULT_CURRENCY : t.currency(),
                 t.merchantName(), t.merchantCategory(), t.countryCode(),
                 String.valueOf(t.channel()), t.timestamp(), t.metadata());

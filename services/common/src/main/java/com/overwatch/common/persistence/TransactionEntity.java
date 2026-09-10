@@ -25,6 +25,19 @@ public class TransactionEntity {
     @Column(name = "card_id", nullable = false, length = 64)
     private String cardId;
 
+    /**
+     * The person behind the card, as the stream reported them.
+     *
+     * <p>Nullable on purpose. Rows written before V4 have no cardholder, and an
+     * authorisation can arrive without one — null says "the stream did not say",
+     * which a backfilled placeholder would make indistinguishable from an answer.
+     */
+    @Column(name = "customer_id", length = 64)
+    private String customerId;
+
+    @Column(name = "customer_name", length = 128)
+    private String customerName;
+
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal amount;
 
@@ -58,11 +71,14 @@ public class TransactionEntity {
         // JPA
     }
 
-    public TransactionEntity(UUID id, String cardId, BigDecimal amount, String currency,
+    public TransactionEntity(UUID id, String cardId, String customerId, String customerName,
+                             BigDecimal amount, String currency,
                              String merchantName, String merchantCategory, String countryCode,
                              String channel, Instant occurredAt, Map<String, String> metadata) {
         this.id = id;
         this.cardId = cardId;
+        this.customerId = customerId;
+        this.customerName = customerName;
         this.amount = amount;
         this.currency = currency;
         this.merchantName = merchantName;
@@ -75,6 +91,8 @@ public class TransactionEntity {
 
     public UUID getId() { return id; }
     public String getCardId() { return cardId; }
+    public String getCustomerId() { return customerId; }
+    public String getCustomerName() { return customerName; }
     public BigDecimal getAmount() { return amount; }
     public String getCurrency() { return currency; }
     public String getMerchantName() { return merchantName; }

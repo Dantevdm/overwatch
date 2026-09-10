@@ -14,8 +14,18 @@ import java.util.UUID;
  *
  * <p>Amounts are {@link BigDecimal}. Money is never a double.
  *
+ * <p>The cardholder fields are nullable. A card is an instrument and a person may
+ * carry several, so the cardholder is what ties a pattern spread across two cards
+ * back to one subject — but this system observes a payment stream rather than
+ * owning customer master data, and an authorisation that arrives without a
+ * cardholder reference is a transaction we still have to evaluate, not one we can
+ * reject. Null means "the stream did not say", which is a different thing from a
+ * placeholder that looks like an answer.
+ *
  * @param id               server-assigned identity
  * @param cardId           tokenised card reference, never a real PAN
+ * @param customerId       tokenised cardholder reference, never a national ID
+ * @param customerName     cardholder display name as presented on the authorisation
  * @param amount           transaction value, in {@code currency}
  * @param currency         ISO-4217 code; ZAR throughout this system
  * @param merchantName     display name, e.g. "Checkers Brackenfell"
@@ -28,6 +38,8 @@ import java.util.UUID;
 public record Transaction(
         UUID id,
         String cardId,
+        String customerId,
+        String customerName,
         BigDecimal amount,
         String currency,
         String merchantName,

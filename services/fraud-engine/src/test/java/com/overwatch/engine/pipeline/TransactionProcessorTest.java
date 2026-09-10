@@ -91,7 +91,8 @@ class TransactionProcessorTest {
     // ---- fixtures ---------------------------------------------------------
 
     private static Transaction txn() {
-        return new Transaction(UUID.randomUUID(), "CARD-1", new BigDecimal("65000.00"), "ZAR",
+        return new Transaction(UUID.randomUUID(), "CARD-1", "cust-1", "Thabo Nkosi",
+                new BigDecimal("65000.00"), "ZAR",
                 "FX Trading ZA", "forex", "CN", Channel.ONLINE, Instant.now(), Map.of());
     }
 
@@ -316,7 +317,8 @@ class TransactionProcessorTest {
     @Test
     @DisplayName("a transaction arriving without an id is given one rather than failing the insert")
     void missingIdIsGenerated() {
-        Transaction t = new Transaction(null, "CARD-1", new BigDecimal("100.00"), "ZAR",
+        Transaction t = new Transaction(null, "CARD-1", "cust-1", "Thabo Nkosi",
+                new BigDecimal("100.00"), "ZAR",
                 "Checkers", "groceries", "ZA", Channel.POS, Instant.now(), Map.of());
         engineReturns(t);
 
@@ -333,7 +335,8 @@ class TransactionProcessorTest {
     @Test
     @DisplayName("a transaction arriving without a currency is stored as ZAR")
     void missingCurrencyDefaultsToZar() {
-        Transaction t = new Transaction(UUID.randomUUID(), "CARD-1", new BigDecimal("100.00"), null,
+        Transaction t = new Transaction(UUID.randomUUID(), "CARD-1", "cust-1", "Thabo Nkosi",
+                new BigDecimal("100.00"), null,
                 "Checkers", "groceries", "ZA", Channel.POS, Instant.now(), Map.of());
         engineReturns(t);
 

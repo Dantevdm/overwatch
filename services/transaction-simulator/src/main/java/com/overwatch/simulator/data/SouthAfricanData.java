@@ -132,4 +132,32 @@ public final class SouthAfricanData {
             "NG", "GH", "RU", "CN", "UA", "RO", "BR", "IN");
 
     public static final String HOME_COUNTRY = "ZA";
+
+    /**
+     * Name parts, combined to make cardholders.
+     *
+     * <p>Entirely synthetic, and combinatorial on purpose: a stored list of whole
+     * names risks being someone's, whereas a first name drawn independently of a
+     * surname produces people who do not exist. Drawn from the language groups
+     * that actually make up South African cardholders rather than one of them,
+     * because a fraud demo whose customer list reads as a single community is
+     * making a claim about who commits fraud that nothing here supports.
+     */
+    public static final List<String> FIRST_NAMES = List.of(
+            "Thabo", "Lerato", "Sipho", "Naledi", "Bongani", "Zanele", "Kagiso",
+            "Nomsa", "Tshepo", "Palesa", "Mandla", "Ayanda", "Sibusiso", "Refilwe",
+            "Johan", "Marike", "Pieter", "Annelie", "Willem", "Elmarie",
+            "Riaan", "Chantal", "Deon", "Ilze",
+            "Aisha", "Yusuf", "Fatima", "Riyaad", "Zainab", "Imraan",
+            "Priya", "Devan", "Kavitha", "Nithin",
+            "James", "Sarah", "Michael", "Claire", "David", "Nicola");
+
+    public static final List<String> SURNAMES = List.of(
+            "Nkosi", "Dlamini", "Mokoena", "Khumalo", "Ndlovu", "Sithole",
+            "Mahlangu", "Zulu", "Molefe", "Mabaso", "Radebe", "Maseko",
+            "van der Merwe", "Botha", "Pretorius", "du Plessis", "Venter",
+            "Nel", "Kruger", "Fourie", "Steyn", "Coetzee",
+            "Abrahams", "Isaacs", "Adams", "Davids", "Jacobs",
+            "Naidoo", "Pillay", "Govender", "Reddy",
+            "Smith", "Williams", "Brown", "Taylor", "Petersen");
 }

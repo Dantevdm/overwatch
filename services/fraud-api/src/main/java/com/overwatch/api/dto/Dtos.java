@@ -20,13 +20,23 @@ public final class Dtos {
     private Dtos() {
     }
 
+    /**
+     * A transaction as the API returns it.
+     *
+     * <p>The cardholder fields are nullable, and that is the contract rather than
+     * an oversight: rows written before the cardholder existed have none, and an
+     * authorisation can arrive without one. Null means the stream did not say.
+     */
     public record TransactionView(
-            UUID id, String cardId, BigDecimal amount, String currency,
+            UUID id, String cardId, String customerId, String customerName,
+            BigDecimal amount, String currency,
             String merchantName, String merchantCategory, String countryCode,
             String channel, Instant occurredAt, Map<String, String> metadata) {
 
         public static TransactionView from(TransactionEntity e) {
-            return new TransactionView(e.getId(), e.getCardId(), e.getAmount(), e.getCurrency(),
+            return new TransactionView(e.getId(), e.getCardId(),
+                    e.getCustomerId(), e.getCustomerName(),
+                    e.getAmount(), e.getCurrency(),
                     e.getMerchantName(), e.getMerchantCategory(), e.getCountryCode(),
                     e.getChannel(), e.getOccurredAt(), e.getMetadata());
         }

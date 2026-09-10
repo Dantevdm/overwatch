@@ -41,7 +41,8 @@ class TransactionConsumerTest {
     }
 
     private static Transaction txn() {
-        return new Transaction(UUID.randomUUID(), "CARD-1", new BigDecimal("100.00"), "ZAR",
+        return new Transaction(UUID.randomUUID(), "CARD-1", "cust-1", "Thabo Nkosi",
+                new BigDecimal("100.00"), "ZAR",
                 "Checkers", "groceries", "ZA", Channel.POS, Instant.now(), Map.of());
     }
 

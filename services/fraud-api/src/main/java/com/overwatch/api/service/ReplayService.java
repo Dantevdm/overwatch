@@ -106,7 +106,9 @@ public class ReplayService {
         } catch (IllegalArgumentException ex) {
             channel = Channel.ONLINE;
         }
-        return new Transaction(e.getId(), e.getCardId(), e.getAmount(), e.getCurrency(),
+        return new Transaction(e.getId(), e.getCardId(),
+                e.getCustomerId(), e.getCustomerName(),
+                e.getAmount(), e.getCurrency(),
                 e.getMerchantName(), e.getMerchantCategory(), e.getCountryCode(),
                 channel, e.getOccurredAt(), e.getMetadata());
     }

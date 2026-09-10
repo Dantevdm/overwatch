@@ -20,7 +20,8 @@ final class RuleTestSupport {
     }
 
     static Transaction txn(String amount, String category, String country, String instant) {
-        return new Transaction(UUID.randomUUID(), "card-1", new BigDecimal(amount), "ZAR",
+        return new Transaction(UUID.randomUUID(), "card-1", "cust-1", "Marike Botha",
+                new BigDecimal(amount), "ZAR",
                 "Checkers Brackenfell", category, country, Channel.POS,
                 Instant.parse(instant), Map.of());
     }

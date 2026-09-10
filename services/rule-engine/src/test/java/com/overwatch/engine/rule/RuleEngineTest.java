@@ -49,13 +49,15 @@ class RuleEngineTest {
 
     /** 02:30 SAST, R60 000 exactly, crypto merchant, acquired in Nigeria. */
     private static Transaction suspicious() {
-        return new Transaction(UUID.randomUUID(), "card-9", new BigDecimal("60000.00"), "ZAR",
+        return new Transaction(UUID.randomUUID(), "card-9", "cust-9", "Ayanda Zulu",
+                new BigDecimal("60000.00"), "ZAR",
                 "Luno Crypto Exchange", "crypto", "NG", Channel.ONLINE,
                 Instant.parse("2026-09-09T00:30:00Z"), Map.of());
     }
 
     private static Transaction ordinary() {
-        return new Transaction(UUID.randomUUID(), "card-1", new BigDecimal("342.75"), "ZAR",
+        return new Transaction(UUID.randomUUID(), "card-1", "cust-1", "Marike Botha",
+                new BigDecimal("342.75"), "ZAR",
                 "Checkers Brackenfell", "groceries", "ZA", Channel.POS,
                 Instant.parse("2026-09-09T10:15:00Z"), Map.of());
     }

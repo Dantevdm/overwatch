@@ -21,7 +21,8 @@ class EvaluationTest {
 
     private static Transaction txn() {
         return new Transaction(
-                UUID.randomUUID(), "card-4821", new BigDecimal("52340.00"), "ZAR",
+                UUID.randomUUID(), "card-4821", "cust-00041", "Naledi Mokoena",
+                new BigDecimal("52340.00"), "ZAR",
                 "Takealot Online", "ecommerce", "ZA", Channel.ONLINE,
                 Instant.parse("2026-09-09T02:14:00Z"), Map.of());
     }

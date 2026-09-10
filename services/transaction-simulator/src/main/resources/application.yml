@@ -22,6 +22,36 @@ overwatch:
     # card fraud sits well under 1%; 8% keeps the demo interesting without making
     # the alert list meaningless.
     fraud-injection-rate: 0.08
+    # Distinct cards in circulation. This is the velocity rule's sizing knob:
+    # velocity is a property of a card, so this against the rate above decides
+    # whether that rule discriminates or fires on everything.
+    card-pool-size: 2000
+
+    # A backfill of past spending, published once on startup.
+    #
+    # Live traffic cannot give a cardholder depth. At five per second, a person
+    # accumulates a meaningful history in hours -- and any attempt to shortcut
+    # that by concentrating live traffic onto fewer cards trips the velocity rule
+    # on ordinary behaviour, which is exactly the failure this system has had
+    # once already. Real depth is months of spending, so it is backfilled with
+    # past timestamps rather than manufactured now.
+    #
+    # Two things fall out of it. A customer profile has something to show the
+    # moment the stack is up, and the amount-deviation rule has a per-card
+    # baseline immediately instead of waiting about an hour for one.
+    #
+    # Backdated transactions cannot trip velocity, which counts inside a
+    # ten-minute window -- so seeding thirty days of history is not a burst as
+    # far as any rule is concerned, whatever it looks like on a throughput chart.
+    seed-history: true
+    history-days: 30
+    history-per-card-per-day: 1.4
+    # Fixed, so the same population and the same transaction ids come back every
+    # run. A restart therefore republishes identical messages and the engine
+    # recognises every one as a redelivery -- which is what makes seeding safe to
+    # repeat in a service that owns no database and cannot ask whether it has
+    # already done it.
+    history-seed: 20260910
 # Actuator: health for compose orchestration, prometheus for scraping.
 # Only what is needed is exposed — this is not "expose: *".
 management:

@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -41,19 +42,81 @@ class TransactionGeneratorTest {
             new TransactionGenerator(2000, new Random(42), NOON);
 
     @Test
-    @DisplayName("normal traffic is local, in ZAR, and plausibly priced")
+    @DisplayName("normal traffic is overwhelmingly local, in ZAR, and plausibly priced")
     void normalTrafficLooksReal() {
         List<Transaction> sample = java.util.stream.Stream
-                .generate(generator::normal).limit(500).toList();
+                .generate(generator::normal).limit(2000).toList();
 
         assertTrue(sample.stream().allMatch(t -> "ZAR".equals(t.currency())));
-        assertTrue(sample.stream().allMatch(t -> SouthAfricanData.HOME_COUNTRY.equals(t.countryCode())));
         assertTrue(sample.stream().allMatch(t -> t.amount().compareTo(BigDecimal.ZERO) > 0));
+
+        // Not "all local" any more, and that is the point. A minority of
+        // cardholders genuinely spend abroad, which is what gives the cross-border
+        // rule an honest false positive to argue about — a population where every
+        // foreign transaction is fraud makes the rule correct by construction and
+        // the demo unable to pose the question a fraud system exists to answer.
+        // Still a minority, though: if most traffic were foreign the rule would
+        // have nothing to distinguish.
+        long local = sample.stream()
+                .filter(t -> SouthAfricanData.HOME_COUNTRY.equals(t.countryCode())).count();
+        double localShare = (double) local / sample.size();
+        assertTrue(localShare > 0.90 && localShare < 1.0,
+                "expected a large local majority with a real foreign minority, got "
+                        + Math.round(localShare * 100) + "% local");
 
         // Skewed toward small amounts, as real card spend is. A mean in the tens of
         // thousands would mean the "high value" rule has nothing to distinguish.
         double mean = sample.stream().mapToDouble(t -> t.amount().doubleValue()).average().orElseThrow();
         assertTrue(mean > 100 && mean < 3000, "implausible mean spend: R" + mean);
+    }
+
+    @Test
+    @DisplayName("a card always belongs to the same cardholder, with one bank and one home city")
+    void cardholdersAreCoherent() {
+        Map<String, String> holderByCard = new HashMap<>();
+        Map<String, String> nameById = new HashMap<>();
+        Map<String, String> bankById = new HashMap<>();
+
+        for (Transaction t : java.util.stream.Stream
+                .generate(generator::normal).limit(3000).toList()) {
+            assertNotNull(t.customerId(), "every generated transaction must name a cardholder");
+            assertNotNull(t.customerName());
+
+            // The property the whole 360 view rests on. Before the customer book
+            // existed, the bank and city were redrawn per transaction, so one
+            // person appeared to bank with four institutions and live in nine
+            // cities — which is not a detail nobody notices, it is exactly what
+            // makes a profile screen worthless.
+            assertEquals(holderByCard.computeIfAbsent(t.cardId(), c -> t.customerId()),
+                    t.customerId(), "card " + t.cardId() + " changed hands");
+            assertEquals(nameById.computeIfAbsent(t.customerId(), c -> t.customerName()),
+                    t.customerName(), t.customerId() + " changed name");
+            assertEquals(bankById.computeIfAbsent(t.customerId(),
+                            c -> t.metadata().get("issuingBank")),
+                    t.metadata().get("issuingBank"), t.customerId() + " changed bank");
+        }
+    }
+
+    @Test
+    @DisplayName("the population is heterogeneous — not everyone spends the same way")
+    void cardholdersDifferFromEachOther() {
+        List<Transaction> sample = java.util.stream.Stream
+                .generate(generator::normal).limit(3000).toList();
+
+        // A generator that emits only the population mean makes every alert
+        // correct by construction: there is no such thing as behaviour that is
+        // unusual for the population but ordinary for this person, which is most
+        // of what a fraud analyst actually reasons about.
+        Map<String, Double> meanByHolder = sample.stream().collect(
+                Collectors.groupingBy(Transaction::customerId,
+                        Collectors.averagingDouble(t -> t.amount().doubleValue())));
+
+        double spread = meanByHolder.values().stream().mapToDouble(Double::doubleValue).max().orElseThrow()
+                / Math.max(1, meanByHolder.values().stream()
+                        .mapToDouble(Double::doubleValue).min().orElseThrow());
+        assertTrue(spread > 5,
+                "cardholders should have visibly different spending baselines; "
+                        + "widest was only " + Math.round(spread) + "x the narrowest");
     }
 
     @Test
@@ -70,11 +133,26 @@ class TransactionGeneratorTest {
                         .allMatch(t -> !t.timestamp().isAfter(now)),
                 "a transaction must never be dated in the future");
 
-        // Within the last second: recent enough that a five-minute window on the
-        // dashboard contains the traffic generated during it.
-        assertTrue(java.util.stream.Stream.generate(generator::normal).limit(1000)
-                        .allMatch(t -> Duration.between(t.timestamp(), now).toSeconds() <= 1),
-                "ordinary traffic should be stamped at approximately now");
+        // Almost all within the last second: recent enough that a five-minute
+        // window on the dashboard contains the traffic generated during it.
+        //
+        // Almost, not all. A late-hours cardholder's ordinary spend is stamped in
+        // the most recent small-hours window, which is deliberately in the past —
+        // that is a real person shopping at 02:00, not a clock fault. The
+        // invariant that matters is the one above: never in the future.
+        //
+        // The band is derived, not guessed. Weighting each archetype's night rate
+        // by its share of the population gives about 5.6% backdated, so roughly
+        // 944 of 1000 land in the last second. Bounded on both sides: too few and
+        // the clock is wrong, too many and the late-hours cardholders have
+        // silently stopped existing, which would quietly remove the honest
+        // late-night false positive the demo depends on.
+        long recent = java.util.stream.Stream.generate(generator::normal).limit(1000)
+                .filter(t -> Duration.between(t.timestamp(), now).toSeconds() <= 1)
+                .count();
+        assertTrue(recent > 900 && recent < 990,
+                "expected about 944 of 1000 stamped now, with a small late-hours "
+                        + "minority backdated; got " + recent);
     }
 
     @Test
@@ -90,8 +168,14 @@ class TransactionGeneratorTest {
                 ZonedDateTime.of(2026, 3, 12, 3, 15, 0, 0, SAST).toInstant(), SAST);
         TransactionGenerator night = new TransactionGenerator(2000, new Random(42), threeAm);
 
-        assertTrue(java.util.stream.Stream.generate(night::normal).limit(100)
-                .allMatch(t -> t.timestamp().atZone(SAST).getHour() == 3));
+        // Hour 3 for traffic stamped now, and 01:00–04:59 for the late-hours
+        // cardholders whose ordinary spend is placed in that window explicitly.
+        // Either way it is the small hours, which is what the rule reacts to.
+        assertTrue(java.util.stream.Stream.generate(night::normal).limit(200)
+                .allMatch(t -> {
+                    int hour = t.timestamp().atZone(SAST).getHour();
+                    return hour >= 1 && hour <= 4;
+                }));
     }
 
     @Test

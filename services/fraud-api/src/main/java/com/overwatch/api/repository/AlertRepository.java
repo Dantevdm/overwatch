@@ -43,6 +43,37 @@ public interface AlertRepository extends JpaRepository<FraudAlertEntity, UUID> {
     @Query("SELECT a.severity, COUNT(a) FROM FraudAlertEntity a GROUP BY a.severity")
     List<Object[]> countBySeverity();
 
+    /**
+     * Every alert raised against one cardholder's transactions, newest first.
+     *
+     * <p>A subquery rather than a join, because there is no association to join
+     * on: an alert references a transaction id, and transactions carry the
+     * cardholder. Modelling a relationship between them would be modelling
+     * something this system does not own — see V4 on why there is no customers
+     * table — and the subquery reads exactly as the question is asked.
+     *
+     * <p>Hits are fetched with it. A profile that lists an alert without saying
+     * which rules fired tells an investigator something happened without saying
+     * what, which is the same failure the single-alert endpoint exists to avoid.
+     */
+    @Query("""
+            SELECT DISTINCT a FROM FraudAlertEntity a
+            LEFT JOIN FETCH a.hits
+            WHERE a.transactionId IN (
+                SELECT t.id FROM TransactionEntity t WHERE t.customerId = :customerId)
+            ORDER BY a.createdAt DESC
+            """)
+    List<FraudAlertEntity> findByCustomer(@Param("customerId") String customerId,
+                                          Pageable pageable);
+
+    @Query("""
+            SELECT a.severity, COUNT(a) FROM FraudAlertEntity a
+            WHERE a.transactionId IN (
+                SELECT t.id FROM TransactionEntity t WHERE t.customerId = :customerId)
+            GROUP BY a.severity
+            """)
+    List<Object[]> countBySeverityForCustomer(@Param("customerId") String customerId);
+
     @Query("""
             SELECT COALESCE(SUM(a.amount), 0) FROM FraudAlertEntity a
             WHERE a.createdAt >= :since
