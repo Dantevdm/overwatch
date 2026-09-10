@@ -88,7 +88,27 @@ public class SimulatorService {
     /** Mean of the curve, so the configured rate is a daily average, not a peak. */
     private static final double SHAPE_MEAN = Arrays.stream(HOURLY_SHAPE).average().orElse(1);
 
-    @Scheduled(fixedRate = TICK_MS)
+    /**
+     * One second's worth of traffic.
+     *
+     * <p>{@code fixedDelay}, not {@code fixedRate}, and the difference is not
+     * academic. {@code fixedRate} schedules the next run at <em>previous start +
+     * period</em>, so when the scheduler thread is starved — a busy host, a long
+     * GC, a suspended VM — every missed tick is then fired back to back to catch
+     * up. That is exactly what happened here: roughly three minutes of starvation
+     * replayed as some sixteen thousand ticks, 116 000 transactions in three
+     * minutes against a configured five per second. Every card then had fifty-odd
+     * transactions inside the ten-minute velocity window, so the velocity rule
+     * fired on 99.5% of traffic and the alert store filled with 111 692
+     * indistinguishable MEDIUM alerts. The rule was right; its input was not.
+     *
+     * <p>{@code fixedDelay} measures from the previous <em>completion</em>, so a
+     * stall costs the traffic that would have happened during it and nothing more.
+     * That is the correct trade for a generator: under-produce while the host is
+     * struggling rather than manufacture a spike that never occurred and cannot be
+     * distinguished from a real one afterwards.
+     */
+    @Scheduled(fixedDelay = TICK_MS)
     public void tick() {
         if (!running.get()) {
             return;
