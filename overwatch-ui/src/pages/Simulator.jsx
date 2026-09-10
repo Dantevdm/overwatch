@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, PATTERN_COPY } from '../api.js';
-import { Card, StatTile, Empty } from '../components/Primitives.jsx';
+import { Button, Card, StatTile, Empty } from '../components/Primitives.jsx';
 
 /**
  * Runtime control over the transaction stream.
@@ -215,33 +215,6 @@ function RunPill({ running }) {
   );
 }
 
-function Button({ children, onClick, disabled, tone = 'neutral' }) {
-  const primary = tone === 'primary';
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        font: 'inherit', fontSize: 'var(--text-sm)', fontWeight: 600,
-        padding: '6px 14px', borderRadius: 'var(--radius-md)',
-        cursor: disabled ? 'default' : 'pointer',
-        opacity: disabled ? 0.55 : 1,
-        background: primary ? 'var(--brand)' : 'var(--bg)',
-        color: primary ? 'var(--brand-fg)' : 'var(--fg)',
-        border: `1px solid ${primary ? 'var(--brand)' : 'var(--border)'}`,
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-/**
- * Commits on release rather than on every frame of the drag: the underlying call
- * changes live throughput, and firing it a hundred times across one drag would
- * make the stream stutter for no benefit.
- */
 function Slider({ label, value, min, max, step, display, hint, onDrag, onCommit }) {
   // Pointer-up, key-up and blur all end a drag, and on a mouse all three can fire
   // for one gesture. Remembering the last committed value keeps that one gesture

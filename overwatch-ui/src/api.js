@@ -28,6 +28,39 @@ async function send(method, path, body) {
   return res.status === 204 ? null : res.json();
 }
 
+/**
+ * Sends a body that is already a string, without re-encoding it.
+ *
+ * `send` above calls JSON.stringify, which is right for an object and wrong for
+ * text that is already JSON — it would arrive at the server as a quoted string.
+ * The stream publish endpoint promises to put the caller's exact bytes on the
+ * topic, so it needs the bytes rather than a stringification of them.
+ */
+async function sendRaw(method, path, body) {
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body,
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    // The API answers a rejected payload with the parser's own complaint, which
+    // is the useful part. Surfacing "400 Bad Request" alone would throw it away.
+    throw new Error(detail(text) || `${res.status} ${res.statusText} on ${path}`);
+  }
+  return text ? JSON.parse(text) : null;
+}
+
+/** The message out of a Spring error body, if it looks like one. */
+function detail(text) {
+  try {
+    const body = JSON.parse(text);
+    return body.detail || body.message || body.error || null;
+  } catch {
+    return null;
+  }
+}
+
 export const api = {
   dashboard: (p) => get('/stats/dashboard', p),
   alerts: (p) => get('/alerts', p),
@@ -44,6 +77,19 @@ export const api = {
   // behind a confirmation in the UI: it is the one call here that destroys data.
   resetData: () => send('POST', '/admin/reset'),
   replayRuleTypes: () => get('/replay/rule-types'),
+
+  // The stream itself. Reads are safe to poll: the API peeks by explicit
+  // partition assignment, so nothing here joins a consumer group or commits an
+  // offset, and looking at a topic cannot move the engine's position in it.
+  streamTopics: () => get('/streams/topics'),
+  streamGroups: () => get('/streams/groups'),
+  streamMessages: (topic, limit) => get(`/streams/topics/${topic}/messages`, { limit }),
+  streamTemplate: () => get('/streams/template'),
+
+  // Both of these publish to the pipeline's input topic, so both are behind
+  // overwatch.api.allow-stream-writes and both are confirmed in the UI.
+  streamPublish: (rawJson) => sendRaw('POST', '/streams/publish', rawJson),
+  streamRedeliver: (count) => send('POST', `/streams/redeliver?count=${count}`),
 
   // Simulator control. Proxied by the API, so the browser never needs to know
   // that the simulator is a separate service on a port nobody publishes.

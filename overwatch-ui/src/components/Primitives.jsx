@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 /** Small building blocks shared by every page. */
 
 export function Card({ title, action, children, style }) {
@@ -178,5 +180,125 @@ export function Empty({ children }) {
     <div style={{ padding: 'var(--space-8)', textAlign: 'center', color: 'var(--muted-fg)' }}>
       {children}
     </div>
+  );
+}
+
+/**
+ * The one button style this dashboard has.
+ *
+ * Lived on the Simulator page until three screens needed it. `tone` covers the
+ * three things a button can mean here: the ordinary action, the one action a
+ * screen is primarily for, and an action that writes to something destructive
+ * enough to warrant looking different before you click it.
+ */
+export function Button({ children, onClick, disabled, tone = 'neutral', title, style }) {
+  const palette = {
+    primary: { bg: 'var(--brand)', fg: 'var(--brand-fg)', bd: 'var(--brand)' },
+    danger: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)', bd: 'var(--danger-border)' },
+    neutral: { bg: 'var(--bg)', fg: 'var(--fg)', bd: 'var(--border)' },
+  }[tone] || { bg: 'var(--bg)', fg: 'var(--fg)', bd: 'var(--border)' };
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      style={{
+        font: 'inherit', fontSize: 'var(--text-sm)', fontWeight: 600,
+        padding: '6px 14px', borderRadius: 'var(--radius-md)',
+        cursor: disabled ? 'default' : 'pointer',
+        opacity: disabled ? 0.55 : 1,
+        background: palette.bg, color: palette.fg,
+        border: `1px solid ${palette.bd}`,
+        whiteSpace: 'nowrap',
+        ...style,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * Copies text to the clipboard and says so.
+ *
+ * The confirmation is the point. Without it a copy button is indistinguishable
+ * from a broken one — nothing on screen changes either way, so people click it
+ * three times and then select the text by hand anyway.
+ *
+ * `navigator.clipboard` needs a secure context, which http://localhost is but
+ * http://<lan-ip> is not. So the failure is handled rather than assumed away:
+ * the label says so, and the text is still selectable underneath.
+ */
+export function CopyButton({ text, label = 'Copy' }) {
+  const [state, setState] = useState('idle');
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setState('done');
+    } catch {
+      setState('failed');
+    }
+    setTimeout(() => setState('idle'), 2000);
+  };
+
+  return (
+    <Button onClick={copy} title="Copy to clipboard"
+            style={{ fontSize: 'var(--text-xs)', padding: '3px 10px' }}>
+      {state === 'done' ? 'Copied' : state === 'failed' ? 'Select it instead' : label}
+    </Button>
+  );
+}
+
+/**
+ * A monospaced block for something machine-shaped — a payload, a URL, a curl
+ * line.
+ *
+ * Scrolls on its own rather than widening the page: a 300-character request URL
+ * must not put a horizontal scrollbar under the whole layout.
+ */
+export function Code({ children, maxHeight = 320, style }) {
+  return (
+    <pre style={{
+      margin: 0, padding: 'var(--space-3)',
+      background: 'var(--surface)', border: '1px solid var(--border)',
+      borderRadius: 'var(--radius-md)',
+      fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
+      lineHeight: 1.55, color: 'var(--fg)',
+      maxHeight, overflow: 'auto',
+      whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+      ...style,
+    }}>
+      {children}
+    </pre>
+  );
+}
+
+/**
+ * An HTTP method, coloured by how much damage it can do.
+ *
+ * GET reads, PATCH changes one field, POST here either creates or destroys. The
+ * colours are the status tokens rather than a new palette, and the method name
+ * is always present — this is a label with a background, not a colour code.
+ */
+export function MethodBadge({ method }) {
+  const tone = {
+    GET: { bg: 'var(--info-bg)', fg: 'var(--info-fg)', bd: 'var(--info-border)' },
+    POST: { bg: 'var(--warning-bg)', fg: 'var(--warning-fg)', bd: 'var(--warning-border)' },
+    PATCH: { bg: 'var(--brand-20)', fg: 'var(--brand)', bd: 'var(--brand-40)' },
+    DELETE: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)', bd: 'var(--danger-border)' },
+  }[method] || { bg: 'var(--surface)', fg: 'var(--muted-fg)', bd: 'var(--border)' };
+
+  return (
+    <span style={{
+      display: 'inline-block', minWidth: 52, textAlign: 'center',
+      padding: '2px 7px', borderRadius: 'var(--radius-sm)',
+      fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700,
+      background: tone.bg, color: tone.fg, border: `1px solid ${tone.bd}`,
+    }}>
+      {method}
+    </span>
   );
 }

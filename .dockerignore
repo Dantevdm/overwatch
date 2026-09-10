@@ -3,6 +3,10 @@
 **/dist/
 .git/
 docs/
-tools/postman/
+# tools/postman is NOT ignored: fraud-api copies the collection onto its own
+# classpath so /api/postman/collection can serve the file under version control
+# rather than a second copy of it. Ignoring it here produced an image that built
+# clean and 500ed on the download, because maven-resources-plugin skips a
+# missing source directory with a warning.
 *.md
 .idea/

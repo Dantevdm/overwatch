@@ -143,10 +143,19 @@ services:
       # The simulator publishes no host port; its controls reach the dashboard
       # through this service instead.
       SIMULATOR_URL: http://transaction-simulator:8081
+      # Not for a listener — this service consumes nothing. The Streams page
+      # needs the broker for topic and consumer-group metadata, for reading the
+      # tail of a topic, and for its two publish operations.
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
     ports:
       - "${OW_API_PORT:-8080}:8080"
     depends_on:
       postgres:
+        condition: service_healthy
+      # Waited on rather than assumed. The AdminClient connects lazily, so this
+      # service starts either way — but starting it before the broker means the
+      # first look at the Streams page is an error message.
+      redpanda:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health/readiness | grep -q UP"]
@@ -215,6 +224,17 @@ services:
       VITE_API_PUBLIC_URL: http://localhost:${OW_API_PORT:-8080}
     ports:
       - "${OW_UI_PORT:-5173}:5173"
+    volumes:
+      # The source, bind-mounted. This container's command is `npm run dev`, so
+      # it was already a development server — baking the source into the image
+      # only meant every UI change cost an image rebuild, and a `compose restart`
+      # silently kept serving the old bundle. Mounted, Vite's HMR picks edits up.
+      - ./overwatch-ui:/app
+      # An anonymous volume over node_modules, so the host directory cannot
+      # shadow it. The dependencies are installed inside the image for the
+      # container's platform; letting the mount hide them means the app runs
+      # against whatever the host happens to have there, or nothing at all.
+      - /app/node_modules
     depends_on:
       - fraud-api
     restart: unless-stopped

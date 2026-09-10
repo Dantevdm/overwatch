@@ -21,6 +21,31 @@ spring:
       ddl-auto: validate
     open-in-view: false
 
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:19092}
+    # This service runs no listener. The consumer settings exist so the Streams
+    # page can peek at recent messages: it assigns partitions explicitly and
+    # seeks, so no group is joined and no offset is ever committed — peeking at a
+    # topic must not move the engine's position in it.
+    consumer:
+      group-id: fraud-api-peek
+      enable-auto-commit: false
+      auto-offset-reset: latest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      # Deliberately raw. The engine deserialises into Transaction because it acts
+      # on the fields; this page shows the reviewer the bytes that are actually on
+      # the topic, and a typed view would quietly repair a payload the pipeline
+      # would have rejected.
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      # A string serializer, not a JSON one. Both stream operations publish bytes
+      # that already exist: the JSON a reviewer typed on the page, or a message
+      # read back off the topic. Serialising a String through JsonSerializer would
+      # quote and escape it, so what landed on the topic would not be what was
+      # shown — and a re-delivery has to be byte-identical to prove anything.
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
 server:
   port: 8080
 
@@ -46,6 +71,12 @@ overwatch:
     # deployment sets to false, and the first route that should demand a role once
     # the BFF grows authentication.
     allow-reset: ${ALLOW_RESET:true}
+    # The Streams page can publish to the transactions topic: one hand-written
+    # transaction, or a verbatim re-delivery of recent messages to demonstrate
+    # that the engine's idempotency guard holds. Both write to the pipeline's
+    # input, so they get the same treatment as reset — a flag, on for the demo,
+    # one line for a deployment that wants the page read-only.
+    allow-stream-writes: ${ALLOW_STREAM_WRITES:true}
 # Actuator: health for compose orchestration, prometheus for scraping.
 # Only what is needed is exposed — this is not "expose: *".
 management:

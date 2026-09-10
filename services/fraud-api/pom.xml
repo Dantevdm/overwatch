@@ -56,6 +56,17 @@
             <artifactId>flyway-database-postgresql</artifactId>
         </dependency>
         <dependency>
+            <!-- Not for a listener: this service consumes nothing. It needs the
+                 AdminClient for topic and consumer-group metadata, a consumer to
+                 peek at recent messages, and a producer for the two stream
+                 operations the dashboard offers. The starter brings all three,
+                 and Boot's auto-configuration then reads the same
+                 spring.kafka.* block the engine uses. -->
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-kafka</artifactId>
+        </dependency>
+
+        <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
         </dependency>
@@ -87,6 +98,26 @@
                             <resources>
                                 <resource>
                                     <directory>${maven.multiModuleProjectDirectory}/infra/database/migration</directory>
+                                    <filtering>false</filtering>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <!-- The Postman collection is served for download by
+                             PostmanController, so it must be on this service's
+                             classpath. Copied from /tools/postman rather than
+                             duplicated into src/main/resources: two copies of a
+                             collection is two collections, and the one nobody
+                             edits is the one that gets downloaded. -->
+                        <id>copy-postman</id>
+                        <phase>generate-resources</phase>
+                        <goals><goal>copy-resources</goal></goals>
+                        <configuration>
+                            <outputDirectory>${project.build.outputDirectory}/postman</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${maven.multiModuleProjectDirectory}/tools/postman</directory>
                                     <filtering>false</filtering>
                                 </resource>
                             </resources>

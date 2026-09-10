@@ -6,6 +6,8 @@ import Transactions from './pages/Transactions.jsx';
 import Rules from './pages/Rules.jsx';
 import Simulator from './pages/Simulator.jsx';
 import Metrics from './pages/Metrics.jsx';
+import Streams from './pages/Streams.jsx';
+import ApiExplorer from './pages/ApiExplorer.jsx';
 import ResetData from './components/ResetData.jsx';
 import ExternalTools from './components/ExternalTools.jsx';
 import { api } from './api.js';
@@ -16,7 +18,11 @@ const NAV = [
   { to: '/alerts', label: 'Alerts' },
   { to: '/rules', label: 'Rules' },
   { to: '/metrics', label: 'Metrics' },
+  { to: '/streams', label: 'Streams' },
   { to: '/simulator', label: 'Simulator' },
+  // Deliberately not '/api': that prefix is the Vite proxy's, so a route there
+  // is handed to the BFF and the browser gets the API's 404 instead of this page.
+  { to: '/api-explorer', label: 'API' },
 ];
 
 export default function App() {
@@ -122,7 +128,9 @@ function Shell() {
             <Route path="/alerts" element={<Alerts />} />
             <Route path="/rules" element={<Rules />} />
             <Route path="/metrics" element={<Metrics />} />
+            <Route path="/streams" element={<Streams />} />
             <Route path="/simulator" element={<Simulator />} />
+            <Route path="/api-explorer" element={<ApiExplorer />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </div>

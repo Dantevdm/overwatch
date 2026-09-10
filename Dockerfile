@@ -41,6 +41,12 @@ RUN --mount=type=cache,target=/root/.m2 \
 # package it into their own classpath (see infra/database/README.md).
 COPY infra/database infra/database
 
+# The Postman collection, for the same reason: fraud-api copies it onto its own
+# classpath so /api/postman/collection can serve it. maven-resources-plugin
+# skips a missing source directory with a warning rather than failing, so
+# leaving this out produces a working image whose download endpoint 500s.
+COPY tools/postman tools/postman
+
 COPY services/common/src                services/common/src
 COPY services/rule-engine/src           services/rule-engine/src
 COPY services/transaction-simulator/src services/transaction-simulator/src
