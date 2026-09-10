@@ -680,7 +680,8 @@ green; the Docker stack job reported six smoke-test failures with one cause.
 - [x] GitHub Actions: build/quality, migrations against real Postgres, full stack + smoke test
 - [x] CodeQL on push and weekly
 - [x] Dependabot for Maven, npm, Docker and Actions
-- [ ] First green CI run
+- [x] First green CI run — run 34455016849, all three jobs, 2026-09-10. It took
+      three faults stacked so each hid the next; see Phase 8.14.
 
 ### Phase 8 — Delivery
 - [x] Postman collection — 22 requests in 6 folders, ordered as a guided tour
