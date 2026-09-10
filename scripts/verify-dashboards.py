@@ -13,7 +13,7 @@ This closes that gap. It reads the provisioned dashboard JSON, expands the
 Grafana template variables, asks Prometheus each query, and fails on any that
 comes back with no series.
 
-    ./scripts/verify-dashboards.py                     # against localhost:9091
+    ./scripts/verify-dashboards.py                     # resolves the port itself
     ./scripts/verify-dashboards.py --url http://prometheus:9090
 
 Panels that are legitimately empty on a healthy stack — error counters, dropped
@@ -27,12 +27,43 @@ from __future__ import annotations
 import argparse
 import glob
 import json
+import os
+import re
 import sys
 import time
+import pathlib
 import urllib.parse
 import urllib.request
 
 DASHBOARD_GLOB = "infra/observability/grafana/dashboards/*.json"
+
+
+def prometheus_url() -> str:
+    """Where Prometheus is published, resolved the way smoke-test.sh does it.
+
+    This used to be hardcoded to localhost:9091, which is not the default — it
+    is whatever preflight happened to reassign on the machine where the script
+    was written, because 9090 was busy there. So it passed locally and, in CI
+    where the stack sits on the documented default, every single query failed
+    with "connection refused" and the retry loop turned a refused connection
+    into a twelve-minute step. A checking script that cannot find the thing it
+    is checking has to say so loudly, and it must not need a flag to look in
+    the ordinary place.
+
+    Order: an explicit environment variable, then .env (which preflight writes
+    when it has to move a port), then the compose default.
+    """
+    port = os.environ.get("OW_PROMETHEUS_PORT")
+    if not port:
+        try:
+            for line in pathlib.Path(".env").read_text().splitlines():
+                match = re.match(r"^\s*OW_PROMETHEUS_PORT\s*=\s*(\d+)", line)
+                if match:
+                    port = match.group(1)
+                    break
+        except OSError:
+            pass
+    return f"http://localhost:{port or '9090'}"
 
 # Grafana expands these server-side; Prometheus has never heard of them. The
 # substitutions only need to be *valid* and roughly representative — this checks
@@ -98,12 +129,25 @@ def query(url: str, expr: str) -> tuple[bool, str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--url", default="http://localhost:9091",
-                        help="Prometheus base URL (default: the published port)")
+    parser.add_argument("--url", default=None,
+                        help="Prometheus base URL (default: resolved from "
+                             "OW_PROMETHEUS_PORT, then .env, then 9090)")
     parser.add_argument("--retries", type=int, default=6,
                         help="Re-check the empty queries this many times before "
                              "failing them (default: 6, three seconds apart)")
     args = parser.parse_args()
+    base_url = args.url or prometheus_url()
+
+    # Fail immediately and clearly if Prometheus is not there at all. Every
+    # query would otherwise report "no data" for what is really "wrong port",
+    # which is the same class of confusion this script exists to prevent.
+    reachable, why = query(base_url, "up")
+    if not reachable:
+        print(f"Cannot reach Prometheus at {base_url} — {why}")
+        print("Set OW_PROMETHEUS_PORT, or pass --url. Nothing was checked.")
+        return 2
+
+    print(f"Checking dashboard queries against {base_url}")
 
     # Collect every check first, then verify in waves. The earlier version
     # retried each query where it stood, which on a cold stack multiplied the
@@ -137,13 +181,13 @@ def main() -> int:
     pending = [c for c in checks if not (c["allowed"] or c["warming"])]
     for c in checks:
         if c["allowed"] or c["warming"]:
-            c["ok"], c["detail"] = query(args.url, expand(c["expr"]))
+            c["ok"], c["detail"] = query(base_url, expand(c["expr"]))
 
     waited = 0
     for attempt in range(args.retries + 1):
         still: list[dict] = []
         for c in pending:
-            c["ok"], c["detail"] = query(args.url, expand(c["expr"]))
+            c["ok"], c["detail"] = query(base_url, expand(c["expr"]))
             if not c["ok"]:
                 still.append(c)
         if not still or attempt == args.retries:
