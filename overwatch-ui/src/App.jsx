@@ -3,6 +3,7 @@ import { BrowserRouter, NavLink, Navigate, Route, Routes } from 'react-router-do
 import Dashboard from './pages/Dashboard.jsx';
 import Alerts from './pages/Alerts.jsx';
 import Transactions from './pages/Transactions.jsx';
+import Customers from './pages/Customers.jsx';
 import Rules from './pages/Rules.jsx';
 import Simulator from './pages/Simulator.jsx';
 import Metrics from './pages/Metrics.jsx';
@@ -15,6 +16,7 @@ import { api } from './api.js';
 const NAV = [
   { to: '/dashboard', label: 'Dashboard' },
   { to: '/transactions', label: 'Transactions' },
+  { to: '/customers', label: 'Cardholders' },
   { to: '/alerts', label: 'Alerts' },
   { to: '/rules', label: 'Rules' },
   { to: '/metrics', label: 'Metrics' },
@@ -125,6 +127,11 @@ function Shell() {
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/transactions" element={<Transactions />} />
+            {/* Two routes, one component: the directory and one person's
+                profile are the same screen at different depths, and a profile
+                needs its own URL so it can be linked to from an alert. */}
+            <Route path="/customers" element={<Customers />} />
+            <Route path="/customers/:id" element={<Customers />} />
             <Route path="/alerts" element={<Alerts />} />
             <Route path="/rules" element={<Rules />} />
             <Route path="/metrics" element={<Metrics />} />

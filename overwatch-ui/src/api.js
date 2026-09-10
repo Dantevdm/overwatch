@@ -78,6 +78,12 @@ export const api = {
   resetData: () => send('POST', '/admin/reset'),
   replayRuleTypes: () => get('/replay/rule-types'),
 
+  // Cardholders. Derived from observed transactions rather than a customer
+  // table, because this system does not own customer master data — so a person
+  // with no transactions correctly does not exist here.
+  customers: (p) => get('/customers', p),
+  customer: (id) => get(`/customers/${encodeURIComponent(id)}`),
+
   // The stream itself. Reads are safe to poll: the API peeks by explicit
   // partition assignment, so nothing here joins a consumer group or commits an
   // offset, and looking at a topic cannot move the engine's position in it.
