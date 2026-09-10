@@ -35,7 +35,7 @@ jobs:
       checks: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v4
@@ -125,7 +125,7 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Apply migrations in order
         env:
@@ -217,7 +217,7 @@ jobs:
     needs: [build]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: docker/setup-buildx-action@v3
 
