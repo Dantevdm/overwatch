@@ -214,10 +214,17 @@ if [[ "$have_docker" -eq 1 ]]; then
     internal_matches fraud-engine 8082 /actuator/prometheus "fraud_risk_score_bucket"
   check "flagged amount exports histogram buckets" \
     internal_matches fraud-engine 8082 /actuator/prometheus "fraud_amount_flagged_zar_bucket"
-  # The severity bands break at 0.5 and 0.75, so those edges have to exist for
-  # the risk-score panels to line up with the bands they are read against.
-  check "risk score buckets include the severity edges" \
-    internal_matches fraud-engine 8082 /actuator/prometheus 'fraud_risk_score_bucket.*le="0.75"'
+  # The severity bands break at 0.45, 0.60 and 0.80, so those edges have to
+  # exist for the risk-score panels to line up with the bands they are read
+  # against. All three are asserted, not one: this check previously named only
+  # 0.75, so when the bands moved it went red for the right reason and said the
+  # least useful version of why.
+  check "risk score bucket at the LOW/MEDIUM edge" \
+    internal_matches fraud-engine 8082 /actuator/prometheus 'fraud_risk_score_bucket.*le="0.45"'
+  check "risk score bucket at the MEDIUM/HIGH edge" \
+    internal_matches fraud-engine 8082 /actuator/prometheus 'fraud_risk_score_bucket.*le="0.6"'
+  check "risk score bucket at the HIGH/CRITICAL edge" \
+    internal_matches fraud-engine 8082 /actuator/prometheus 'fraud_risk_score_bucket.*le="0.8"'
   check "HTTP timings export histogram buckets" \
     internal_matches fraud-engine 8082 /actuator/prometheus "http_server_requests_seconds_bucket"
 else
