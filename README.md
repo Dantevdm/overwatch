@@ -216,6 +216,18 @@ headline figures keep their own fixed periods, because silently rescoping "open
 alerts awaiting an analyst" to five minutes answers a different question from the
 one the label asks.
 
+**Idempotent consumption.** Kafka delivers at least once. On a consumer
+rebalance, or a crash between processing a record and committing its offset, the
+same transaction arrives again — and a second alert for one card movement is not
+cosmetic, it double-counts every figure an analyst reads and every rule-performance
+statistic used to decide whether a rule earns its place. The transaction id is the
+idempotency key: the engine recognises a redelivery and skips it, counting it as
+`transactions_redelivered_total`. Two unique constraints back that up at the schema
+level, because two engine instances racing the same record can both pass an
+application check and only the database can settle it. Verified by rewinding the
+consumer group to the start of the topic and re-consuming all 5,330 records: 5,330
+redeliveries recognised, zero duplicate alerts.
+
 **Replay / what-if.** `POST /api/replay` takes a candidate configuration and a
 time window, replays stored transactions through it, and returns the alerts it *would*
 have generated — writing nothing. "What if the high-value threshold were R30,000?"
@@ -240,6 +252,7 @@ The metrics are business metrics, not just request counters:
 | `fraud_shadow_hits_total` | What shadow rules would have caught |
 | `kafka_consumer_fetch_manager_records_lag` | Whether detection is keeping pace with traffic |
 | `simulator_diurnal_weight` | The time-of-day multiplier currently applied to the rate — explains a throughput change that is not a fault |
+| `transactions_redelivered_total` | Records Kafka delivered more than once and the engine declined to score twice |
 | `logback_events_total{level="error"}` | Error rate, without reading logs |
 
 All three distributions are exported as Prometheus **histograms** rather than as
@@ -583,7 +596,7 @@ migration. The chart palette was measured rather than eyeballed, which caught tw
 severity colours 4.1 ΔE apart. Every JSX file was parsed with esbuild.
 
 **Also executed, on a machine with Docker and Maven.** `mvn clean verify` passes
-green across all five modules — 80 tests, plus JaCoCo, SpotBugs with find-sec-bugs,
+green across all five modules — 99 tests, plus JaCoCo, SpotBugs with find-sec-bugs,
 and PMD. The stack was brought up cold with `docker compose up --build`: Flyway
 migrated, Hibernate's `ddl-auto: validate` accepted every entity against the
 migrated schema, the simulator published, the engine consumed and scored, and
@@ -617,4 +630,5 @@ the project plan.
 - **Hand-set rule weights.** A learned model would be more interesting and considerably less verifiable in the time available.
 - **Polling, not WebSockets.** Five seconds is imperceptible on a dashboard and a fraction of the complexity.
 - **No dead-letter topic.** A poison message is logged and counted rather than stalling the partition; a real deployment would route it somewhere.
+- **Alerts are written to PostgreSQL and published to Kafka in the same transaction.** The send is asynchronous, so a rollback after the send is initiated leaves an alert on the topic that does not exist in the database. The durable record is the database one and the topic is a notification, which bounds the damage — but the honest fix is a transactional outbox, or publishing after commit rather than inside it.
 - **Replay ignores history-dependent rules.** Velocity and amount-deviation report nothing there rather than answering from a baseline that does not reflect the replayed window. A wrong answer delivered confidently is the failure mode worth avoiding in a tool meant to inform a threshold change.

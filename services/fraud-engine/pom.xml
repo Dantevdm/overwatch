@@ -20,8 +20,16 @@
 
 
     <properties>
-        <!-- Wiring — consumer, repositories, processor. Covered by the CI stack job. -->
-        <jacoco.line.coverage>0.00</jacoco.line.coverage>
+        <!-- The repositories here really are wiring, and the entities and config
+             are excluded from measurement anyway. The pipeline is not: calling
+             TransactionProcessor "wiring" was how this module came to have no
+             tests at all, while holding the decisions that matter most — that a
+             shadow hit raises no alert, that a failed publish costs a
+             notification and not a detection, and that a redelivered record is
+             not scored twice. That is 93.9% of the measured set; the floor sits
+             under it with room for a genuinely thin addition, not room for the
+             pipeline to go untested again. -->
+        <jacoco.line.coverage>0.80</jacoco.line.coverage>
     </properties>
 
     <dependencies>

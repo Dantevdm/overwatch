@@ -534,6 +534,115 @@ misplaced exactly; there was just no answer to "where does a new thing go".
 > That is a more interesting answer than the one a person would guess, which is
 > the case for the endpoint existing.
 
+### Phase 8.13 — The engine's own tests, and idempotent consumption
+
+fraud-engine — the service the project is named after — had no tests at all: 0
+files against 11 classes. The module POM justified a 0.00 coverage floor on the
+grounds that "the service modules are wiring", which is fair for repositories
+and true of the consumer's transport role, but not of the 221-line
+TransactionProcessor holding every decision between the rule engine and the
+outside world.
+
+- [x] `TransactionProcessorTest` — 15 assertions, no Spring context
+- [x] `TransactionConsumerTest` — 4 assertions on the two failure branches
+- [x] Redelivery guard on the transaction id, with `transactions.redelivered`
+      registered at zero
+- [x] `V3__enforce_one_alert_per_transaction.sql` — unique constraints on
+      `fraud_alerts(transaction_id)` and `shadow_rule_hits(transaction_id, rule_id)`
+- [x] Coverage floor for the module raised 0.00 → 0.80 against 93.9% actual
+
+> **The comment that gave it away.** TransactionConsumer's own javadoc says all
+> the behaviour lives in TransactionProcessor, "which is what lets the pipeline
+> be tested without a broker". The design was deliberately made testable and
+> then not tested. TransactionProcessor is now at 100% line coverage and the
+> consumer at 100%; the only uncovered class left is JpaTransactionHistory,
+> seven lines of delegation to a repository, which is what "wiring" actually
+> looks like.
+>
+> **Kafka delivers at least once, and nothing here was idempotent.** On a
+> rebalance, or a crash between processing a record and committing its offset,
+> the same transaction is redelivered. The transaction row was safe — its id is
+> the primary key and JPA merges on it — but `persistAlert` minted a fresh UUID
+> every time and `shadow_rule_hits` has an auto-increment key, and there was no
+> unique constraint on either. Two alerts for one card movement double-count
+> every figure an analyst reads and every rule-performance statistic used to
+> decide whether a rule earns its place.
+>
+> It had not actually happened yet: a check of the live database found 0
+> duplicates, because nothing had crashed mid-batch. A latent correctness bug
+> rather than an active one, which is the kind worth fixing before a
+> demonstration rather than after.
+>
+> **Verified by forcing the redelivery rather than reasoning about it.** With
+> the producer paused, `rpk group seek fraud-engine --to start` rewound the
+> consumer group from offset 5330 to 0 and the engine re-consumed the entire
+> topic: 5330 redeliveries recognised and logged, `transactions_redelivered_total`
+> at 5330, and 0 duplicate alerts and 0 duplicate shadow hits afterwards.
+> Before the fix that run would have produced 556 duplicate alerts.
+>
+> The constraints are not redundant with the guard. Two engine instances can
+> both pass an application-level check for the same record; only the database
+> can settle that race. The loser's insert fails, its transaction rolls back,
+> Kafka redelivers, and the retry takes the skip branch — so the two mechanisms
+> converge rather than overlap. Both migration statements deduplicate before
+> adding their constraint, so V3 applies to a volume that already accumulated
+> duplicates instead of failing half-way.
+>
+> Negative-tested rather than assumed: removing the guard fails
+> `redeliveryIsSkipped` and `redeliveryDoesNotDoubleCount`; setting the coverage
+> floor to 0.99 fails the build with "lines covered ratio is 0.93"; and the
+> migration was run against a real PostgreSQL 16 seeded with duplicate alerts,
+> duplicate shadow hits and a NULL-rule pair, then checked that all three are
+> rejected afterwards — the NULL case needs `UNIQUE NULLS NOT DISTINCT`, since
+> the default treats every NULL as unique and would have left exactly the
+> duplicates the constraint exists to prevent.
+
+### Phase 8.14 — Making CI green, and what it had been hiding
+
+CI had been red on every run. The quality gate and the migration job were always
+green; the Docker stack job reported six smoke-test failures with one cause.
+
+- [x] Health check on `transaction-simulator` — it had none
+- [x] `docker compose up -d --wait` in CI
+- [x] Smoke test waits for every service, not only fraud-api
+- [x] Scrape-target count polled rather than asserted once
+- [x] `verify-dashboards.py` verifies in waves instead of per-query retries
+- [x] A warm-up allowance, separate from ALLOW_EMPTY
+
+> **A stack seventeen seconds from ready, reported as broken.**
+> transaction-simulator is the last service to become useful — it waits for the
+> engine, boots Spring, then connects a producer — and with no health check
+> `docker compose up -d` returned while it was still starting. In the failing
+> run the smoke checks ran at 20:38:47 and the simulator served its first
+> request at 20:39:04. The six failures were its health, its status through the
+> API, its pattern list, its Prometheus endpoint, "3 of 4 scrape targets up",
+> and consumer lag — the last one downstream of the rest, since no producer
+> means no fetch and the per-partition gauge is never created.
+>
+> The lesson worth keeping: a service that other things wait on needs a health
+> check even when nothing scrapes it from the host. The smoke test's readiness
+> gate waited only for fraud-api, which is ready around forty seconds earlier.
+>
+> **Fixing it exposed a second failure that had been hidden behind the first**,
+> because verify-dashboards had never once run in CI. "Shadow hits, by rule"
+> returns nothing on a cold stack: the rule shipped in SHADOW is
+> AMOUNT_DEVIATION, which needs 10 prior transactions on the same card and then
+> a 5x outlier. With 2000 cards at 5/s a card is seen every 400 seconds, so ten
+> of them is about 67 minutes — an hour past the end of any CI run.
+>
+> That is a warm-up, not a fault, so it gets its own allowance list and prints
+> as `[warm]` rather than `[zero]`. ALLOW_EMPTY means "nothing has gone wrong",
+> which is good news; this means "not enough has happened yet", which is
+> neither. It is keyed on the correct metric name, which is what stops it
+> excusing a typo — negative-tested by misspelling the metric and confirming it
+> still fails.
+>
+> **And the verifier itself was the slowest thing in CI.** It retried each empty
+> query where it stood, so a cold stack multiplied 18 seconds by the number of
+> quiet panels: the step was still running after twelve minutes. The waiting is
+> for the stack to warm up rather than for any one query, so it now runs a pass,
+> collects the empties, and waits once between passes. 0.13s on a warm stack.
+
 ### Phase 7 — Observability
 - [x] Actuator and Micrometer on all services
 - [x] Business metrics — latency percentiles, alerts by rule, shadow hits, ZAR flagged

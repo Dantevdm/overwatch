@@ -101,58 +101,85 @@ def main() -> int:
     parser.add_argument("--url", default="http://localhost:9091",
                         help="Prometheus base URL (default: the published port)")
     parser.add_argument("--retries", type=int, default=6,
-                        help="Re-check an empty query this many times before "
-                             "failing it (default: 6, three seconds apart)")
+                        help="Re-check the empty queries this many times before "
+                             "failing them (default: 6, three seconds apart)")
     args = parser.parse_args()
 
-    failures = 0
-    checked = 0
-
+    # Collect every check first, then verify in waves. The earlier version
+    # retried each query where it stood, which on a cold stack multiplied the
+    # wait by the number of quiet panels: 45 queries each sleeping 18s is a
+    # thirteen-minute step, and it was the slowest thing in CI by an order of
+    # magnitude. The waiting is for the *stack* to warm up, not for one query,
+    # so one shared wait between passes is both faster and more accurate.
+    checks: list[dict] = []
     for path in sorted(glob.glob(DASHBOARD_GLOB)):
         dashboard = json.load(open(path))
-        print(f"\n{dashboard.get('title', path)}  [{path}]")
-
         for panel in panels_of(dashboard):
             for target in panel.get("targets", []):
                 expr = target.get("expr")
                 if not expr:
                     continue
-                checked += 1
-                allowed = any(token in expr for token in ALLOW_EMPTY)
-                warming = any(token in expr for token in ALLOW_EMPTY_UNTIL_WARM)
+                checks.append({
+                    "file": path,
+                    "dashboard": dashboard.get("title", path),
+                    "label": panel.get("title") or panel.get("type"),
+                    "legend": target.get("legendFormat", ""),
+                    "expr": expr,
+                    "allowed": any(tok in expr for tok in ALLOW_EMPTY),
+                    "warming": any(tok in expr for tok in ALLOW_EMPTY_UNTIL_WARM),
+                })
 
-                # Retry the empties. On a stack that has just started, a panel
-                # keyed on alerts has genuinely seen no alerts yet, and failing
-                # on that race would make this check untrustworthy in CI — which
-                # is the one place it has to be believed.
-                ok, detail = query(args.url, expand(expr))
-                attempts = 0
-                while not ok and not allowed and not warming and attempts < args.retries:
-                    time.sleep(3)
-                    attempts += 1
-                    ok, detail = query(args.url, expand(expr))
-                if ok and attempts:
-                    detail += f", after {attempts * 3}s"
+    # An expected-empty check is asked once: waiting cannot change its verdict.
+    # It still records the real answer, though — the failure counters are
+    # registered at zero, so they legitimately return a series, and reporting
+    # that as "zero" would hide the difference between a counter that exists
+    # reading nought and a query that matches nothing at all.
+    pending = [c for c in checks if not (c["allowed"] or c["warming"])]
+    for c in checks:
+        if c["allowed"] or c["warming"]:
+            c["ok"], c["detail"] = query(args.url, expand(c["expr"]))
 
-                if ok:
-                    status = "ok  "
-                elif allowed:
-                    status = "zero"          # empty, and that is the good news
-                elif warming:
-                    status = "warm"          # empty because the stack is young
-                else:
-                    status = "FAIL"
-                    failures += 1
+    waited = 0
+    for attempt in range(args.retries + 1):
+        still: list[dict] = []
+        for c in pending:
+            c["ok"], c["detail"] = query(args.url, expand(c["expr"]))
+            if not c["ok"]:
+                still.append(c)
+        if not still or attempt == args.retries:
+            pending = still
+            break
+        time.sleep(3)
+        waited += 3
+        pending = still
 
-                label = f"{panel.get('title') or panel.get('type')}"
-                legend = target.get("legendFormat", "")
-                print(f"  [{status}] {label}"
-                      + (f" — {legend}" if legend else "")
-                      + f"  ({detail})")
-                if status == "FAIL":
-                    print(f"         {expand(expr)}")
+    if waited:
+        print(f"(waited {waited}s in total for the stack to warm up)")
 
-    print(f"\n{checked} queries checked, {failures} returning no data")
+    failures = 0
+    current = None
+    for c in checks:
+        if c["dashboard"] != current:
+            current = c["dashboard"]
+            print(f"\n{current}  [{c['file']}]")
+
+        if c["ok"]:
+            status = "ok  "
+        elif c["allowed"]:
+            status = "zero"          # empty, and that is the good news
+        elif c["warming"]:
+            status = "warm"          # empty because the stack is young
+        else:
+            status = "FAIL"
+            failures += 1
+
+        print(f"  [{status}] {c['label']}"
+              + (f" — {c['legend']}" if c["legend"] else "")
+              + f"  ({c['detail']})")
+        if status == "FAIL":
+            print(f"         {expand(c['expr'])}")
+
+    print(f"\n{len(checks)} queries checked, {failures} returning no data")
     if failures:
         print("A panel with no data renders as \"No data\", which is "
               "indistinguishable from a metric that is simply quiet. Fix the "

@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -65,6 +66,13 @@ public class TransactionProcessor {
         this.history = history;
         this.kafka = kafka;
         this.meters = meters;
+
+        // At zero, for the same reason the failure counters are: a pipeline that
+        // has never seen a redelivery would otherwise export no series at all,
+        // and "no data" on a panel asking how often we redeliver is
+        // indistinguishable from a broken query.
+        meters.counter("transactions.redelivered");
+
         this.evaluationTimer = Timer.builder("fraud.detection.latency")
                 .description("Time to evaluate one transaction against the rule set")
                 // A histogram, not client-side percentiles. publishPercentiles()
@@ -126,8 +134,38 @@ public class TransactionProcessor {
         meters.counter("fraud.alerts.publish.failed");
     }
 
+    /**
+     * Process one transaction, unless it has already been processed.
+     *
+     * <p>Returns empty for a redelivery. Kafka delivers at least once: on a
+     * consumer rebalance, or a crash between processing a record and committing
+     * its offset, the same transaction arrives again. Without this guard that
+     * produced a second alert for one transaction — the transaction row itself
+     * was safe, since its id is the primary key and JPA merges on it, but the
+     * alert minted a fresh UUID each time and shadow hits have an auto-increment
+     * key, so both duplicated silently. Two alerts for one card movement is not
+     * a cosmetic problem: it is double-counting in every figure an analyst reads
+     * and every rule-performance statistic used to decide whether a rule earns
+     * its place.
+     *
+     * <p>The transaction id is the idempotency key, which is what makes this
+     * cheap — it is the primary key, so the check is an index lookup, and the
+     * merge that follows was already issuing the same SELECT.
+     *
+     * <p>Two engine instances racing the same record can both pass this check.
+     * That case is caught by the unique constraints added in V3 rather than
+     * here: the loser's insert fails, its transaction rolls back, Kafka
+     * redelivers, and the retry takes this branch. An application check cannot
+     * close that window; the database can.
+     */
     @Transactional
-    public Evaluation process(Transaction txn) {
+    public Optional<Evaluation> process(Transaction txn) {
+        if (txn.id() != null && transactions.existsById(txn.id())) {
+            log.info("Transaction {} already processed; skipping redelivery", txn.id());
+            meters.counter("transactions.redelivered").increment();
+            return Optional.empty();
+        }
+
         transactions.save(toEntity(txn));
 
         Evaluation evaluation = evaluationTimer.record(
@@ -141,7 +179,7 @@ public class TransactionProcessor {
         }
 
         recordMetrics(txn, evaluation);
-        return evaluation;
+        return Optional.of(evaluation);
     }
 
     private void recordShadowHits(Transaction txn, Evaluation evaluation) {
