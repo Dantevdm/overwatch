@@ -33,16 +33,23 @@ function useHover() {
  * what was asked for, strokes stay 2px, and the extra width becomes more chart
  * rather than more magnification.
  *
- * Falls back to 720 before the first measurement, so the first paint is a
+ * Falls back to `fallback` before the first measurement, so the first paint is a
  * reasonable chart rather than a zero-width one.
+ *
+ * `minimum` is a floor, and it belongs to the chart rather than to the hook. A
+ * plot with a labelled axis stops being readable below about 240px and the right
+ * answer there is to overflow and let the card scroll. A sparkline has no axis
+ * and no minimum worth speaking of — it lives inside a 200px stat tile, and a
+ * 240px floor is how its line came to be drawn straight out through the side of
+ * the card.
  */
-function useMeasuredWidth(fallback = 720) {
+function useMeasuredWidth(fallback = 720, minimum = 240) {
   const ref = useRef(null);
   const [width, setWidth] = useState(fallback);
 
   const measure = useCallback((node) => {
-    if (node) setWidth(Math.max(240, Math.round(node.getBoundingClientRect().width)));
-  }, []);
+    if (node) setWidth(Math.max(minimum, Math.round(node.getBoundingClientRect().width)));
+  }, [minimum]);
 
   useEffect(() => {
     const node = ref.current;
@@ -490,17 +497,24 @@ export function RuleBars({ rows, height = 26 }) {
  * anyone actually looks for.
  */
 export function Sparkline({ data, height = 30, color = 'var(--chart-1)', label }) {
-  const [box, W] = useMeasuredWidth(120);
+  const [box, W] = useMeasuredWidth(120, 40);
   const values = (data ?? []).map((d) => (typeof d === 'number' ? d : d.count));
 
   if (values.length < 2) {
-    return <div ref={box} style={{ height }} />;
+    return <div ref={box} style={{ height, overflow: 'hidden' }} />;
   }
 
-  const PADY = 3;
+  // Inset by the marker's radius on every side, so the last point's dot lands
+  // inside the box rather than half-outside it.
+  const R = 3;
   const max = Math.max(1, ...values);
-  const x = (i) => (i / (values.length - 1)) * (W - 4) + 2;
-  const y = (v) => height - PADY - (v / max) * (height - PADY * 2);
+  const min = Math.min(...values);
+  const x = (i) => R + (i / (values.length - 1)) * (W - R * 2);
+  // A series that never changes draws along the middle. Scaled from zero it
+  // would sit hard against the top edge and read as a chart that is clipped.
+  const y = max === min
+    ? () => height / 2
+    : (v) => height - R - (v / max) * (height - R * 2);
 
   const line = values.map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i)},${y(v)}`).join(' ');
   const area = `${line} L${x(values.length - 1)},${height} L${x(0)},${height} Z`;
@@ -508,9 +522,9 @@ export function Sparkline({ data, height = 30, color = 'var(--chart-1)', label }
   const lastY = y(values[values.length - 1]);
 
   return (
-    <div ref={box} style={{ height }}>
+    <div ref={box} style={{ height, overflow: 'hidden' }}>
       <svg viewBox={`0 0 ${W} ${height}`} width={W} height={height}
-           style={{ display: 'block', overflow: 'visible' }}
+           style={{ display: 'block' }}
            role="img" aria-label={label ?? `Trend over the last ${values.length} buckets`}>
         <path d={area} fill={color} opacity="0.12" />
         <path d={line} fill="none" stroke={color} strokeWidth="1.75"
