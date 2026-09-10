@@ -106,6 +106,70 @@ def parse_entities() -> dict[str, dict[str, tuple[str, dict]]]:
     return tables
 
 
+# Types that information_schema reports without a parenthesised modifier, so
+# format_type's rendering and information_schema's data_type already agree.
+def _split_modifier(rendered: str) -> tuple[str, str | None]:
+    """`numeric(15,2)` -> ("numeric", "15,2"). `bigint` -> ("bigint", None)."""
+    if rendered.endswith(")") and "(" in rendered:
+        base, _, modifier = rendered.partition("(")
+        return base.strip(), modifier[:-1]
+    return rendered, None
+
+
+def relation_columns(cur, relation: str) -> dict:
+    """
+    The columns of a table OR a materialised view, in one shape.
+
+    information_schema does not know materialised views exist — they are a
+    PostgreSQL extension and appear in pg_catalog only. So an entity mapped to
+    one looked, to this script, exactly like an entity mapped to nothing:
+    "table does not exist in the schema". cardholder_summary is a materialised
+    view, and this check was silently not checking it at all.
+
+    Tables still come from information_schema, which is where the type
+    information is already in the form the comparison below expects. Only the
+    fallback reconstructs that form from pg_catalog's format_type — the two
+    render identically for every type this schema uses, and keeping the primary
+    path unchanged means the fallback cannot regress the ordinary case.
+    """
+    cur.execute("""
+        SELECT column_name, data_type, character_maximum_length,
+               numeric_precision, numeric_scale, udt_name
+        FROM information_schema.columns WHERE table_name = %s
+    """, (relation,))
+    rows = cur.fetchall()
+    if rows:
+        return {r[0]: r for r in rows}
+
+    cur.execute("""
+        SELECT a.attname, format_type(a.atttypid, a.atttypmod), t.typname
+          FROM pg_attribute a
+          JOIN pg_class c ON c.oid = a.attrelid
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          JOIN pg_type t ON t.oid = a.atttypid
+         WHERE c.relname = %s
+           -- 'm' is a materialised view. Ordinary views ('v') are included
+           -- too: an entity mapped to one has exactly the same contract.
+           AND c.relkind IN ('m', 'v')
+           AND n.nspname = 'public'
+           AND a.attnum > 0
+           AND NOT a.attisdropped
+    """, (relation,))
+
+    columns = {}
+    for name, rendered, udt in cur.fetchall():
+        base, modifier = _split_modifier(rendered)
+        charlen = prec = scale = None
+        if base == "character varying" or base == "character":
+            charlen = int(modifier) if modifier else None
+        elif base == "numeric" and modifier:
+            parts = modifier.split(",")
+            prec = int(parts[0])
+            scale = int(parts[1]) if len(parts) > 1 else 0
+        columns[name] = (name, base, charlen, prec, scale, udt)
+    return columns
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dsn", required=True)
@@ -123,12 +187,7 @@ def main() -> int:
 
     problems, checked = [], 0
     for table, columns in sorted(entities.items()):
-        cur.execute("""
-            SELECT column_name, data_type, character_maximum_length,
-                   numeric_precision, numeric_scale, udt_name
-            FROM information_schema.columns WHERE table_name = %s
-        """, (table,))
-        actual = {r[0]: r for r in cur.fetchall()}
+        actual = relation_columns(cur, table)
         if not actual:
             problems.append(f"{table}: table does not exist in the schema")
             continue

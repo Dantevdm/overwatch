@@ -33,10 +33,22 @@ FROM redpandadata/console:v2.7.2
 #
 # Written to the system config rather than passed as GIT_CONFIG_* from compose,
 # because the console shells out to git and this must not depend on that child
-# process inheriting the environment. Scoped to /repo rather than "*", so the
-# exemption covers exactly the path that needs it and a repository appearing
-# anywhere else in this container is still refused.
+# process inheriting the environment.
+#
+# Both paths, and /repo/.git is the one that actually matters. Cloning *from* a
+# local path makes git check the source gitdir, so it wants the exemption on
+# /repo/.git — an entry for /repo alone leaves the clone failing with the same
+# message, which is how the first attempt at this fix passed a hand-run
+# `git -C /repo rev-parse` and still crash-looped in CI. Git says which path it
+# wants in the error itself; it is worth reading rather than assuming it means
+# the worktree. /repo is kept as well so anything that reads the mount directly
+# also works.
+#
+# Two explicit paths rather than "*", so the exemption covers exactly what needs
+# it and a repository appearing anywhere else in this container is still
+# refused.
 USER root
 RUN apk add --no-cache git
-RUN git config --system --add safe.directory /repo
+RUN git config --system --add safe.directory /repo \
+ && git config --system --add safe.directory /repo/.git
 USER redpandaconsole
