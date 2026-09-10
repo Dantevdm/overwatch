@@ -25,6 +25,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
+    # action-junit-report publishes the test results as a check run, which needs
+    # checks: write. Without this block the job gets only the repository's
+    # default token scopes, and the step failed with "Resource not accessible by
+    # integration" — an annotation error on an otherwise green build, so the
+    # tests ran and passed and simply were not published anywhere.
+    permissions:
+      contents: read
+      checks: write
+
     steps:
       - uses: actions/checkout@v4
 
@@ -63,9 +72,25 @@ jobs:
       - name: Coverage summary
         if: always()
         run: |
-          echo "### Coverage" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Coverage"
+            echo
+            echo "Raw JaCoCo figures, over _every_ class in each module. The"
+            echo "coverage gate measures a narrower set — it excludes JPA"
+            echo "entities, DTOs, config and the Application classes, which are"
+            echo "declarations rather than behaviour — so the gated percentage"
+            echo "is higher than the one below and is the one that fails the"
+            echo "build. \`common\` reads low here and is at 96.6% gated,"
+            echo "because most of its lines are entity accessors."
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
           for csv in $(find . -name jacoco.csv); do
-            module=$(echo "$csv" | cut -d/ -f2)
+            # The directory immediately above target/, whatever its depth.
+            # This was `cut -d/ -f2`, which was correct while the modules sat at
+            # the repository root and silently became "services" for every one
+            # of them when they moved under services/ — five identical labels
+            # against five different numbers.
+            module=$(echo "$csv" | sed 's|.*/\([^/]*\)/target/.*|\1|')
             # JaCoCo CSV: column 8 is LINE_MISSED, 9 is LINE_COVERED. Columns
             # 4 and 5 are instructions — a different, always more flattering
             # number, and not the one the coverage gate enforces.
