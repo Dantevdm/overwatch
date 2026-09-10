@@ -4,6 +4,7 @@ import {
   api, zar, shortTime, RANGES, DEFAULT_RANGE, bucketLabel, rangeLabel, SEVERITY_COLOR,
 } from '../api.js';
 import { Card, StatTile, Empty, SegmentedControl, SeverityBadge } from '../components/Primitives.jsx';
+import { useNewIds } from '../motion.js';
 import { AlertsOverTime, SeverityOverTime, RuleBars, Sparkline, SeverityMix } from '../components/Charts.jsx';
 
 /**
@@ -114,22 +115,33 @@ export default function Dashboard() {
 
       <div style={{ display: 'grid', gap: 'var(--space-4)',
                     gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
-        <StatTile label="Transactions" value={stats.totalTransactions.toLocaleString('en-ZA')}
+        {/* The figures roll when they change, and the tiles enter in reading
+            order 60ms apart. minDelta per tile, because "worth animating" is
+            about the quantity: a count that moves in the hundreds should roll,
+            and a mean that moves in the third decimal should not. */}
+        <StatTile label="Transactions" delay={0}
+                  numeric={stats.totalTransactions} format={count} minDelta={0}
                   sub={`${stats.transactionsLastHour.toLocaleString('en-ZA')} in the last hour`}
                   chart={<Sparkline data={stats.transactionsOverTime} color="var(--chart-2)"
                                     label={`Transaction volume per ${bucketName}`} />} />
-        <StatTile label="Alerts raised" value={stats.totalAlerts.toLocaleString('en-ZA')}
+        <StatTile label="Alerts raised" delay={60}
+                  numeric={stats.totalAlerts} format={count}
                   sub={windowRate === null
                     ? 'no traffic in this window'
                     : `${windowRate.toFixed(2)}% of the last ${rangeLabel(stats.rangeMinutes)}`}
                   chart={<Sparkline data={stats.alertsOverTime}
                                     label={`Alerts per ${bucketName}`} />} />
-        <StatTile label="Open alerts" value={stats.openAlerts.toLocaleString('en-ZA')}
+        <StatTile label="Open alerts" delay={120}
+                  numeric={stats.openAlerts} format={count}
                   tone={stats.openAlerts > 0 ? 'warning' : undefined}
                   sub="awaiting an analyst" />
-        <StatTile label="Flagged value" value={zar(stats.flaggedLast24hZar)}
+        <StatTile label="Flagged value" delay={180}
+                  numeric={stats.flaggedLast24hZar} format={zar}
                   tone="danger" sub="last 24 hours of activity" />
-        <StatTile label="Mean risk score" value={stats.averageRiskScore.toFixed(2)}
+        {/* Two decimals, so anything under 0.005 is invisible anyway — rolling
+            it would animate a digit that does not change. */}
+        <StatTile label="Mean risk score" delay={240}
+                  numeric={stats.averageRiskScore} format={score} minDelta={0.005}
                   sub="across all alerts" />
       </div>
 
@@ -209,7 +221,17 @@ function sum(series) {
  * amount, which rules fired and how long ago — which is every question someone
  * glancing at a live feed asks before deciding whether to open it.
  */
+/**
+ * The last few alerts.
+ *
+ * The feed re-renders wholesale every five seconds, so a genuinely new alert
+ * would otherwise just be a row at the top of a list of eight, indistinguishable
+ * from the seven that were already there. useNewIds finds the arrivals and each
+ * one flashes once, then decays — a highlight that stays becomes a category
+ * rather than an event. Nothing flashes on first load, when every row is new.
+ */
 function AlertFeed({ rows }) {
+  const fresh = useNewIds((rows ?? []).map((a) => a.id));
   if (!rows || rows.length === 0) {
     return <div style={{ color: 'var(--muted-fg)', fontSize: 'var(--text-sm)' }}>
       Nothing flagged yet.
@@ -220,12 +242,19 @@ function AlertFeed({ rows }) {
     <div style={{ display: 'flex', flexDirection: 'column' }}>
       {rows.map((a, i) => (
         <Link key={a.id} to={`/alerts?focus=${a.id}`}
+              className={fresh.has(a.id) ? 'ow-flash' : undefined}
               style={{
                 display: 'grid', gridTemplateColumns: 'auto 1fr auto',
                 alignItems: 'center', gap: 'var(--space-3)',
                 padding: 'var(--space-3) 0',
                 borderTop: i === 0 ? 'none' : '1px solid var(--border)',
                 textDecoration: 'none', color: 'inherit',
+                // The flash paints the row's own background, so it needs a
+                // paint box that covers the full width of the card's padding.
+                marginLeft: 'calc(var(--space-3) * -1)',
+                marginRight: 'calc(var(--space-3) * -1)',
+                paddingLeft: 'var(--space-3)', paddingRight: 'var(--space-3)',
+                borderRadius: 'var(--radius-sm)',
               }}>
           {/* A severity stripe as well as the badge: at a glance down the list
               the stripe is what makes a run of CRITICALs visible as a block. */}
@@ -263,3 +292,12 @@ const caption = {
 const linkStyle = {
   fontSize: 'var(--text-sm)', color: 'var(--brand)', textDecoration: 'none',
 };
+
+/** Whole numbers, grouped. Rounded because a count-up passes through fractions. */
+function count(n) {
+  return Math.round(n).toLocaleString('en-ZA');
+}
+
+function score(n) {
+  return n.toFixed(2);
+}

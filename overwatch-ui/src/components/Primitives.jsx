@@ -1,15 +1,28 @@
 import { useState } from 'react';
+import { useCountUp } from '../motion.js';
 
 /** Small building blocks shared by every page. */
 
-export function Card({ title, action, children, style }) {
+/**
+ * A panel.
+ *
+ * `delay` staggers its entrance. Passed by a page laying out a grid, so the
+ * cards arrive in reading order over about a third of a second instead of
+ * appearing all at once — which is the difference between a screen that
+ * assembles and a screen that blinks. It is a keyframe on mount only: nothing
+ * re-enters when the five-second poll returns, and under
+ * prefers-reduced-motion the class does nothing at all.
+ */
+export function Card({ title, action, children, style, delay = 0 }) {
   return (
     <section
+      className="ow-rise"
       style={{
         background: 'var(--bg)',
         border: '1px solid var(--border)',
         borderRadius: 'var(--radius-xl)',
         boxShadow: 'var(--shadow-sm)',
+        animationDelay: delay ? `${delay}ms` : undefined,
         ...style,
       }}
     >
@@ -90,7 +103,24 @@ function valueFontSize(value) {
   return 'var(--text-lg)';                  // 16px — "R68 343 795.35"
 }
 
-export function StatTile({ label, value, sub, tone, chart }) {
+/**
+ * A single figure with its label, and optionally a trend under it.
+ *
+ * Pass `value` alone for text. Pass `numeric` and `format` instead and the
+ * figure rolls from its old value to its new one when it changes: the label
+ * stays put, the number moves, and the eye goes to the tile that actually
+ * moved rather than having to diff five tiles against memory.
+ *
+ * `minDelta` is the caller's, because what counts as a change worth animating
+ * is entirely about the quantity. A transaction count moving by 300 between
+ * polls should roll; a mean risk score moving by 0.001 should not, and rolling
+ * it is 650ms of noise in the last decimal.
+ */
+export function StatTile({ label, value, sub, tone, chart,
+                           numeric, format, minDelta = 0, delay = 0 }) {
+  const rolled = useCountUp(Number.isFinite(numeric) ? numeric : 0, { minDelta });
+  const shown = Number.isFinite(numeric) && format ? format(rolled) : value;
+
   const toneColor = {
     danger: 'var(--danger-fg)',
     warning: 'var(--warning-fg)',
@@ -99,12 +129,14 @@ export function StatTile({ label, value, sub, tone, chart }) {
 
   return (
     <div
+      className="ow-rise"
       style={{
         background: 'var(--bg)',
         border: '1px solid var(--border)',
         borderRadius: 'var(--radius-xl)',
         boxShadow: 'var(--shadow-sm)',
         padding: 'var(--space-5)',
+        animationDelay: delay ? `${delay}ms` : undefined,
       }}
     >
       <div style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-fg)',
@@ -117,12 +149,12 @@ export function StatTile({ label, value, sub, tone, chart }) {
           never wraps mid-number — which left clipping as the failure mode. A
           clipped currency figure is worse than a smaller one: "R68 343 795.3" is
           not a wrong-looking number, it is a plausible one that is wrong. */}
-      <div title={typeof value === 'string' ? value : undefined}
-           style={{ fontSize: valueFontSize(value), fontWeight: 700, lineHeight: 1.15,
+      <div title={typeof shown === 'string' ? shown : undefined}
+           style={{ fontSize: valueFontSize(shown), fontWeight: 700, lineHeight: 1.15,
                     marginTop: 'var(--space-2)', color: toneColor || 'var(--fg)',
                     fontVariantNumeric: 'tabular-nums',
                     whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-        {value}
+        {shown}
       </div>
       {sub && (
         <div style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-fg)', marginTop: 4 }}>

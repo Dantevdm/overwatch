@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEntered } from '../motion.js';
 import { SEVERITIES, SEVERITY_COLOR, rangeLabel } from '../api.js';
 
 /**
@@ -214,12 +215,22 @@ export function AlertsOverTime({ data, volume, height = 220, bucketSeconds = 360
           );
         })}
 
-        <path d={area} fill="url(#alertFill)" />
-        <path d={line} fill="none" stroke="var(--chart-1)" strokeWidth="2"
+        <path className="ow-fade-in" d={area} fill="url(#alertFill)"
+              style={{ animationDelay: '520ms' }} />
+        {/* pathLength="1" is what makes one CSS rule draw any path: it
+            renormalises the dash units, so `stroke-dasharray: 1` is the whole
+            line whatever its actual length in user units. Without it every
+            chart would need its own measured constant. */}
+        <path className="ow-draw" pathLength="1"
+              d={line} fill="none" stroke="var(--chart-1)" strokeWidth="2"
               strokeLinejoin="round" strokeLinecap="round" />
 
-        {/* Emphasised endpoint, per mark specs. */}
-        <circle cx={x(data.length - 1)} cy={y(data[data.length - 1].count)} r="4"
+        {/* Emphasised endpoint, per mark specs. Faded in after the line has
+            finished drawing, so the dot does not sit alone at the end of a
+            line that has not arrived yet. */}
+        <circle className="ow-fade-in"
+                style={{ animationDelay: '860ms' }}
+                cx={x(data.length - 1)} cy={y(data[data.length - 1].count)} r="4"
                 fill="var(--chart-1)" stroke="var(--chart-bg)" strokeWidth="2" />
 
         {/* Hit targets larger than the marks. */}
@@ -363,7 +374,14 @@ export function SeverityOverTime({ data, height = 240, bucketSeconds = 3600, ran
           return (
             <path key={sev} d={path} fill="none" stroke={SEVERITY_COLOR[sev]}
                   strokeWidth={stroke.width} strokeDasharray={stroke.dash ?? undefined}
-                  strokeLinejoin="round" strokeLinecap="round" />
+                  strokeLinejoin="round" strokeLinecap="round"
+                  // Only the solid bands draw themselves. A band whose identity
+                  // IS its dash pattern cannot also use the dash array to
+                  // animate, and overriding it would draw the line and then
+                  // change its appearance — worse than not animating it.
+                  className={stroke.dash ? 'ow-fade-in' : 'ow-draw'}
+                  pathLength={stroke.dash ? undefined : 1}
+                  style={{ animationDelay: `${SEVERITIES.indexOf(sev) * 110}ms` }} />
           );
         })}
 
@@ -449,6 +467,9 @@ export function SeverityOverTime({ data, height = 240, bucketSeconds = 3600, ran
  */
 export function RuleBars({ rows, height = 26 }) {
   const [hovered, setHovered] = useHover();
+  // Bars grow out of the left on first paint. A transition rather than a
+  // keyframe, because the target width is a value only JavaScript knows.
+  const entered = useEntered();
   if (!rows || rows.length === 0) {
     return <div style={{ color: 'var(--muted-fg)', fontSize: 'var(--text-sm)' }}>
       No rule hits recorded yet.
@@ -469,12 +490,17 @@ export function RuleBars({ rows, height = 26 }) {
             {r.label}
           </span>
           <div style={{ background: 'var(--surface)', borderRadius: 4, height: 14 }}>
-            <div style={{
-              width: `${(r.value / max) * 100}%`, height: '100%',
+            <div className="ow-grow" style={{
+              width: entered ? `${(r.value / max) * 100}%` : 0, height: '100%',
               background: r.shadow ? 'var(--chart-3)' : 'var(--chart-1)',
-              borderRadius: 4, minWidth: r.value > 0 ? 4 : 0,
+              borderRadius: 4, minWidth: r.value > 0 && entered ? 4 : 0,
               opacity: hovered === null || hovered === i ? 1 : 0.6,
-              transition: 'opacity .12s',
+              // Two transitions with different durations: the width is the
+              // entrance and wants easing, the opacity is a hover response and
+              // wants to feel immediate. Staggered down the list, capped so a
+              // long list does not end with a bar arriving a second late.
+              transition: 'opacity .12s, width 620ms cubic-bezier(.22,.72,.28,1)',
+              transitionDelay: `0s, ${Math.min(i * 45, 400)}ms`,
             }} />
           </div>
           <span style={{ fontSize: 'var(--text-xs)', textAlign: 'right',
@@ -526,8 +552,10 @@ export function Sparkline({ data, height = 30, color = 'var(--chart-1)', label }
       <svg viewBox={`0 0 ${W} ${height}`} width={W} height={height}
            style={{ display: 'block' }}
            role="img" aria-label={label ?? `Trend over the last ${values.length} buckets`}>
-        <path d={area} fill={color} opacity="0.12" />
-        <path d={line} fill="none" stroke={color} strokeWidth="1.75"
+        <path className="ow-fade-in" d={area} fill={color} opacity="0.12"
+              style={{ animationDelay: '400ms' }} />
+        <path className="ow-draw" pathLength="1"
+              d={line} fill="none" stroke={color} strokeWidth="1.75"
               strokeLinejoin="round" strokeLinecap="round" />
         <circle cx={lastX} cy={lastY} r="2.5" fill={color} />
       </svg>
@@ -547,6 +575,7 @@ export function Sparkline({ data, height = 30, color = 'var(--chart-1)', label }
  */
 export function SeverityMix({ counts, height = 14 }) {
   const total = SEVERITIES.reduce((sum, s) => sum + (counts?.[s] ?? 0), 0);
+  const entered = useEntered();
 
   if (total === 0) {
     return <div style={{ color: 'var(--muted-fg)', fontSize: 'var(--text-sm)' }}>
@@ -563,8 +592,13 @@ export function SeverityMix({ counts, height = 14 }) {
         {SEVERITIES.map((s) => {
           const share = (counts?.[s] ?? 0) / total;
           if (share <= 0.004) return null;
-          return <div key={s} title={`${s}: ${(share * 100).toFixed(1)}%`}
-                      style={{ flex: share, background: SEVERITY_COLOR[s] }} />;
+          // flex-grow is animatable, so the whole bar unfolds left to right
+          // from nothing without any width arithmetic.
+          return <div key={s} className="ow-grow"
+                      title={`${s}: ${(share * 100).toFixed(1)}%`}
+                      style={{ flex: entered ? share : 0,
+                               background: SEVERITY_COLOR[s],
+                               transition: 'flex-grow 700ms cubic-bezier(.22,.72,.28,1)' }} />;
         })}
       </div>
 

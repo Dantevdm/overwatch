@@ -191,10 +191,26 @@ function Shell({ analyst, onSignOut }) {
                       color: 'var(--side-fg)', textDecoration: 'none',
                       fontSize: 'var(--text-base)', fontWeight: isActive ? 600 : 400,
                       background: isActive ? 'var(--side-active)' : 'transparent',
-                      marginBottom: 2,
+                      marginBottom: 2, position: 'relative',
+                      // Colour and weight change instantly on click, which is
+                      // right for a navigation: the response to a click should
+                      // never be something you wait for.
+                      transition: 'background 140ms ease-out',
                     })}>
                     {({ isActive }) => (
                       <>
+                      {/* The accent's one appearance in the sidebar: a marker
+                          on the active row that grows out of nothing rather
+                          than being drawn or not drawn. Scaled on Y from the
+                          centre, so it costs a composite and cannot shift the
+                          row's layout. */}
+                      <span aria-hidden="true" className="ow-grow" style={{
+                        position: 'absolute', left: 0, top: 6, bottom: 6, width: 3,
+                        borderRadius: '0 3px 3px 0', background: 'var(--accent)',
+                        transform: `scaleY(${isActive ? 1 : 0})`,
+                        transformOrigin: 'center',
+                        transition: 'transform 220ms cubic-bezier(.2,.8,.3,1)',
+                      }} />
                       <span style={{ display: 'inline-flex', alignItems: 'center',
                                      gap: 'var(--space-3)', minWidth: 0 }}>
                         {/* The icon sits at 0.72 opacity when the link is idle
@@ -240,10 +256,26 @@ function Shell({ analyst, onSignOut }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7,
                            fontSize: 'var(--text-xs)', color: 'var(--muted-fg)' }}>
+              {/* The dot, plus a ring expanding out of it while the poll is
+                  landing. The halo is the only always-on animation in the app,
+                  which is justified: "is this thing live" is the one question
+                  a static dot genuinely cannot answer — a frozen page and a
+                  connected one look identical. It stops when the connection
+                  drops, which is the useful signal. */}
               <span aria-hidden="true" style={{
-                width: 8, height: 8, borderRadius: '50%',
-                background: live ? 'var(--success-fg)' : 'var(--muted-fg)',
-              }} />
+                position: 'relative', width: 8, height: 8, display: 'inline-flex',
+              }}>
+                <span style={{
+                  position: 'absolute', inset: 0, borderRadius: '50%',
+                  background: live ? 'var(--success-fg)' : 'var(--muted-fg)',
+                }} />
+                {live && (
+                  <span className="ow-pulse" style={{
+                    position: 'absolute', inset: 0, borderRadius: '50%',
+                    background: 'var(--success-fg)',
+                  }} />
+                )}
+              </span>
               {live ? 'Live' : 'Disconnected'}
             </span>
             <ResetData onReset={() => { setOpenAlerts(0); setResetNonce((n) => n + 1); }} />

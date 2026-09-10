@@ -43,14 +43,52 @@
   to   { transform: translateX(160%); }
 }
 
+/* A line drawing itself. The path carries pathLength="1", so the dash array is
+   in normalised units and one rule works for every path in the app regardless
+   of its actual length — no measuring, no per-chart constants. */
+@keyframes ow-draw {
+  from { stroke-dashoffset: 1; }
+  to   { stroke-dashoffset: 0; }
+}
+
+/* The live indicator. A ring expanding out of the dot and fading, rather than
+   the dot itself throbbing: a pulsing dot is hard to distinguish from a
+   rendering glitch, and a halo reads as a heartbeat. */
+@keyframes ow-pulse {
+  0%   { transform: scale(1);   opacity: .55; }
+  70%  { transform: scale(2.6); opacity: 0; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+
+/* A row arriving. Tints to the accent and settles back to transparent, so the
+   eye is pulled to the new alert without the row ending up permanently
+   coloured — the highlight has to decay or it becomes a category. */
+@keyframes ow-flash {
+  from { background-color: var(--accent-20); }
+  to   { background-color: transparent; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   /* Not "shorter" — off. The animation-name reset is what actually stops a
      spinner rather than spinning it very slowly, and the final frame is the
      one that looks intentional at rest. */
-  .ow-spin, .ow-fill, .ow-fade-in, .ow-rise, .ow-sweep {
+  .ow-spin, .ow-fill, .ow-fade-in, .ow-rise, .ow-sweep,
+  .ow-draw, .ow-pulse, .ow-flash {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;
+  }
+  /* The draw needs its dash reset as well as its animation stopped: the
+     attribute that hides the line is stroke-dashoffset, and an animation-none
+     path would otherwise sit at the offset its first frame set. */
+  .ow-draw {
+    stroke-dashoffset: 0 !important;
+    stroke-dasharray: none !important;
+  }
+  /* Transitions are not animations and are not covered by the reset above.
+     Anything whose entrance is a transition must be told to arrive instantly. */
+  .ow-grow {
+    transition: none !important;
   }
 }
 
@@ -60,3 +98,7 @@
 .ow-fade-in { animation: ow-fade-in 320ms ease-out both; }
 .ow-rise    { animation: ow-rise 380ms cubic-bezier(.21,.78,.35,1) both; }
 .ow-sweep   { animation: ow-sweep 3.2s ease-in-out infinite; }
+.ow-draw    { stroke-dasharray: 1;
+              animation: ow-draw 900ms cubic-bezier(.33,.72,.3,1) both; }
+.ow-pulse   { animation: ow-pulse 2.2s ease-out infinite; }
+.ow-flash   { animation: ow-flash 1.5s ease-out both; }
