@@ -1,0 +1,31 @@
+# Redpanda Console configuration.
+#
+# Exists for one feature: per-topic documentation. Everything else the console
+# needs comes from KAFKA_BROKERS in docker-compose.yml, and the Documentation
+# tab is the one thing that cannot be switched on with an environment variable
+# alone, because it needs a source to read the markdown from.
+
+kafka:
+  brokers:
+    - redpanda:9092
+
+console:
+  topicDocumentation:
+    enabled: true
+
+    # Git is the only source this version supports — there is no filesystem
+    # provider, which is why the repository is mounted into the container and
+    # cloned from a local path rather than simply being read off disk. No
+    # credentials are involved and nothing leaves the machine.
+    #
+    # The consequence worth knowing: a clone reads *committed* state. Editing a
+    # file under topic-docs/ and refreshing the console shows nothing until the
+    # change is committed, and it reads the branch named below rather than
+    # whatever is checked out.
+    git:
+      enabled: true
+      refreshInterval: 1m
+      repository:
+        url: file:///repo
+        branch: main
+        baseDirectory: infra/observability/redpanda-console/topic-docs

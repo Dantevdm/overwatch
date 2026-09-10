@@ -78,10 +78,15 @@ services:
         condition: service_healthy
     environment:
       KAFKA_BROKERS: redpanda:9092
-      # Deserialise the message values as JSON so the console shows a readable
-      # transaction rather than a base64 blob.
-      KAFKA_TOPICDOCUMENTATION_ENABLED: "false"
-      CONSOLE_TOPICDOCUMENTATION_ENABLED: "false"
+      CONFIG_FILEPATH: /etc/console/console.yaml
+    volumes:
+      - ./infra/observability/redpanda-console/console.yaml:/etc/console/console.yaml:ro
+      # The repository itself, read-only, so the console can serve the per-topic
+      # documentation under infra/observability/redpanda-console/topic-docs.
+      # This version has no filesystem source for those docs — git only — so it
+      # clones from a local path. Read-only, no credentials, nothing leaves the
+      # machine. See console.yaml.
+      - .:/repo:ro
     ports:
       - "${OW_CONSOLE_PORT:-8090}:8080"
     healthcheck:
