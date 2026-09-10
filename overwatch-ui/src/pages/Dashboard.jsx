@@ -1,11 +1,26 @@
 import { useEffect, useState } from 'react';
-import { api, zar, RANGES, DEFAULT_RANGE, bucketLabel, rangeLabel } from '../api.js';
-import { Card, StatTile, Empty, SegmentedControl } from '../components/Primitives.jsx';
-import { AlertsOverTime, SeverityOverTime, RuleBars } from '../components/Charts.jsx';
+import { Link } from 'react-router-dom';
+import {
+  api, zar, shortTime, RANGES, DEFAULT_RANGE, bucketLabel, rangeLabel, SEVERITY_COLOR,
+} from '../api.js';
+import { Card, StatTile, Empty, SegmentedControl, SeverityBadge } from '../components/Primitives.jsx';
+import { AlertsOverTime, SeverityOverTime, RuleBars, Sparkline, SeverityMix } from '../components/Charts.jsx';
 
+/**
+ * The operations view: what the pipeline has seen, what it flagged, and what is
+ * on fire right now.
+ *
+ * Laid out as a grid rather than a column of full-width cards. A dashboard is
+ * read by glancing, and glancing only works when the things being compared are
+ * on screen together — a stack of 600px-tall cards is a slideshow with extra
+ * steps, and it got that way because the charts scaled themselves to whatever
+ * width they were given. The grid is two columns from 1100px up and collapses to
+ * one on narrow screens, where a stack is the correct answer.
+ */
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [perf, setPerf] = useState([]);
+  const [feed, setFeed] = useState([]);
   const [error, setError] = useState(null);
   const [range, setRange] = useState(DEFAULT_RANGE);
 
@@ -13,11 +28,15 @@ export default function Dashboard() {
     let cancelled = false;
     const load = async () => {
       try {
-        const [s, p] = await Promise.all([
+        const [s, p, f] = await Promise.all([
           api.dashboard({ rangeMinutes: range }),
           api.rulePerformance(),
+          // The live feed is the newest alerts regardless of the chart window:
+          // it answers "what just happened", which a range filter would only
+          // ever make emptier.
+          api.alerts({ size: 8 }),
         ]);
-        if (!cancelled) { setStats(s); setPerf(p); setError(null); }
+        if (!cancelled) { setStats(s); setPerf(p); setFeed(f.content ?? []); setError(null); }
       } catch (e) {
         if (!cancelled) setError(e.message);
       }
@@ -48,17 +67,6 @@ export default function Dashboard() {
   // control and the axis labels always describe the data on screen rather than
   // the request that produced it.
   const bucketName = bucketLabel(stats.bucketSeconds);
-  const rangeControl = (
-    <SegmentedControl
-      label="Time range for the charts"
-      value={stats.rangeMinutes}
-      onChange={setRange}
-      options={RANGES.map((r) => ({
-        value: r.minutes, label: r.label,
-        title: `Last ${r.label}`,
-      }))}
-    />
-  );
 
   const ruleRows = perf
     .filter((r) => r.timesFired > 0 || r.shadowHits > 0)
@@ -69,56 +77,189 @@ export default function Dashboard() {
     }))
     .sort((a, b) => b.value - a.value);
 
+  // Categories by volume, top eight. The tail of a merchant-category
+  // distribution is long and uninformative, and eight bars is what fits beside
+  // the rules card without either one scrolling.
+  const categoryRows = Object.entries(stats.transactionsByCategory ?? {})
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 8);
+
+  // Alert rate within the window, which is the number a fraud team actually
+  // tunes against — a lifetime rate hides today entirely.
+  const windowAlerts = sum(stats.alertsOverTime);
+  const windowTransactions = sum(stats.transactionsOverTime);
+  const windowRate = windowTransactions > 0 ? (windowAlerts / windowTransactions) * 100 : null;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
 
+      {/* The range control governs every chart below, so it sits above them all
+          rather than inside whichever card happened to be first. */}
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+                    gap: 'var(--space-4)', flexWrap: 'wrap' }}>
+        <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--muted-fg)' }}>
+          Charts show the last {rangeLabel(stats.rangeMinutes)}, bucketed every {bucketName},
+          by when each transaction happened. The tiles keep their own fixed periods.
+        </p>
+        <SegmentedControl
+          label="Time range for the charts"
+          value={stats.rangeMinutes}
+          onChange={setRange}
+          options={RANGES.map((r) => ({
+            value: r.minutes, label: r.label, title: `Last ${r.label}`,
+          }))}
+        />
+      </div>
+
       <div style={{ display: 'grid', gap: 'var(--space-4)',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))' }}>
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
         <StatTile label="Transactions" value={stats.totalTransactions.toLocaleString('en-ZA')}
-                  sub={`${stats.transactionsLastHour.toLocaleString('en-ZA')} in the last hour`} />
+                  sub={`${stats.transactionsLastHour.toLocaleString('en-ZA')} in the last hour`}
+                  chart={<Sparkline data={stats.transactionsOverTime} color="var(--chart-2)"
+                                    label={`Transaction volume per ${bucketName}`} />} />
         <StatTile label="Alerts raised" value={stats.totalAlerts.toLocaleString('en-ZA')}
-                  sub={stats.totalTransactions > 0
-                    ? `${((stats.totalAlerts / stats.totalTransactions) * 100).toFixed(2)}% of traffic`
-                    : '—'} />
+                  sub={windowRate === null
+                    ? 'no traffic in this window'
+                    : `${windowRate.toFixed(2)}% of the last ${rangeLabel(stats.rangeMinutes)}`}
+                  chart={<Sparkline data={stats.alertsOverTime}
+                                    label={`Alerts per ${bucketName}`} />} />
         <StatTile label="Open alerts" value={stats.openAlerts.toLocaleString('en-ZA')}
                   tone={stats.openAlerts > 0 ? 'warning' : undefined}
                   sub="awaiting an analyst" />
         <StatTile label="Flagged value" value={zar(stats.flaggedLast24hZar)}
-                  tone="danger" sub="last 24 hours" />
+                  tone="danger" sub="last 24 hours of activity" />
         <StatTile label="Mean risk score" value={stats.averageRiskScore.toFixed(2)}
                   sub="across all alerts" />
       </div>
 
-      <Card title={`Alerts per ${bucketName}`} action={rangeControl}>
-        <AlertsOverTime data={stats.alertsOverTime}
-                        bucketSeconds={stats.bucketSeconds}
-                        rangeMinutes={stats.rangeMinutes}
-                        bucketName={bucketName} />
-        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-fg)',
-                    marginTop: 'var(--space-3)', marginBottom: 0 }}>
-          Last {rangeLabel(stats.rangeMinutes)}, bucketed every {bucketName}. The
-          range applies to both charts; the figures above keep their own fixed
-          periods.
-        </p>
-      </Card>
+      {/* Charts two abreast. minmax(0, …) rather than 1fr: a grid track sized
+          1fr refuses to shrink below its content, and an SVG measuring itself
+          against its track then never gets a chance to get smaller, so the row
+          overflows on the way down instead of reflowing. */}
+      <div style={{ display: 'grid', gap: 'var(--space-5)',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))' }}>
 
-      <Card title="Severity over time">
-        <SeverityOverTime data={stats.severityOverTime}
+        <Card title={`Alerts per ${bucketName}`}>
+          <AlertsOverTime data={stats.alertsOverTime}
+                          volume={stats.transactionsOverTime}
+                          height={180}
                           bucketSeconds={stats.bucketSeconds}
                           rangeMinutes={stats.rangeMinutes}
                           bucketName={bucketName} />
-      </Card>
-
-      <Card title="Which rules are firing">
-        <RuleBars rows={ruleRows} />
-        {ruleRows.some((r) => r.shadow) && (
-          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-fg)',
-                      marginTop: 'var(--space-4)', marginBottom: 0 }}>
-            Lighter bars are rules in shadow — evaluated against live traffic,
-            recording what they would have caught, raising no alerts.
+          <p style={caption}>
+            The faint bars behind the line are transaction volume, drawn on their
+            own scale so a quiet stretch does not read as a detector that stopped
+            working. Only the alert count is on the labelled axis.
           </p>
-        )}
-      </Card>
+        </Card>
+
+        <Card title="Severity mix">
+          <SeverityMix counts={stats.alertsBySeverity} />
+          <p style={caption}>
+            Every alert ever raised, by severity. The bar is share; the list is
+            counts, because a percentage of an unstated total says nothing.
+          </p>
+        </Card>
+
+        <Card title="Severity over time">
+          <SeverityOverTime data={stats.severityOverTime}
+                            height={200}
+                            bucketSeconds={stats.bucketSeconds}
+                            rangeMinutes={stats.rangeMinutes}
+                            bucketName={bucketName} />
+        </Card>
+
+        <Card title="Latest alerts"
+              action={<Link to="/alerts" style={linkStyle}>All alerts →</Link>}>
+          <AlertFeed rows={feed} />
+        </Card>
+
+        <Card title="Which rules are firing">
+          <RuleBars rows={ruleRows} />
+          {ruleRows.some((r) => r.shadow) && (
+            <p style={caption}>
+              Lighter bars are rules in shadow — evaluated against live traffic,
+              recording what they would have caught, raising no alerts.
+            </p>
+          )}
+        </Card>
+
+        <Card title="Where the money goes">
+          <RuleBars rows={categoryRows} />
+          <p style={caption}>
+            Transactions by merchant category, top {categoryRows.length}. This is
+            the baseline the watchlist rule is an exception to.
+          </p>
+        </Card>
+      </div>
     </div>
   );
 }
+
+function sum(series) {
+  return (series ?? []).reduce((total, b) => total + b.count, 0);
+}
+
+/**
+ * The newest alerts, as a list rather than a table.
+ *
+ * A table needs column headers to be readable, and headers cost a row of height
+ * that this card cannot spare beside a chart. Each line carries severity, the
+ * amount, which rules fired and how long ago — which is every question someone
+ * glancing at a live feed asks before deciding whether to open it.
+ */
+function AlertFeed({ rows }) {
+  if (!rows || rows.length === 0) {
+    return <div style={{ color: 'var(--muted-fg)', fontSize: 'var(--text-sm)' }}>
+      Nothing flagged yet.
+    </div>;
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      {rows.map((a, i) => (
+        <Link key={a.id} to={`/alerts?focus=${a.id}`}
+              style={{
+                display: 'grid', gridTemplateColumns: 'auto 1fr auto',
+                alignItems: 'center', gap: 'var(--space-3)',
+                padding: 'var(--space-3) 0',
+                borderTop: i === 0 ? 'none' : '1px solid var(--border)',
+                textDecoration: 'none', color: 'inherit',
+              }}>
+          {/* A severity stripe as well as the badge: at a glance down the list
+              the stripe is what makes a run of CRITICALs visible as a block. */}
+          <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            <span aria-hidden="true"
+                  style={{ width: 3, height: 26, borderRadius: 2,
+                           background: SEVERITY_COLOR[a.severity] ?? 'var(--muted-fg)' }} />
+            <SeverityBadge severity={a.severity} />
+          </span>
+          <span style={{ minWidth: 0 }}>
+            <span style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+              {zar(a.amount)}
+            </span>
+            <span style={{ color: 'var(--muted-fg)', fontSize: 'var(--text-xs)',
+                           display: 'block', overflow: 'hidden',
+                           textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              score {a.riskScore} · {a.status.toLowerCase()}
+            </span>
+          </span>
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-fg)',
+                         whiteSpace: 'nowrap' }}>
+            {shortTime(a.occurredAt)}
+          </span>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+const caption = {
+  fontSize: 'var(--text-xs)', color: 'var(--muted-fg)',
+  marginTop: 'var(--space-4)', marginBottom: 0,
+};
+
+const linkStyle = {
+  fontSize: 'var(--text-sm)', color: 'var(--brand)', textDecoration: 'none',
+};

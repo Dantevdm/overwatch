@@ -91,9 +91,13 @@ class TransactionProcessorTest {
     // ---- fixtures ---------------------------------------------------------
 
     private static Transaction txn() {
+        return txn(Instant.now());
+    }
+
+    private static Transaction txn(Instant when) {
         return new Transaction(UUID.randomUUID(), "CARD-1", "cust-1", "Thabo Nkosi",
                 new BigDecimal("65000.00"), "ZAR",
-                "FX Trading ZA", "forex", "CN", Channel.ONLINE, Instant.now(), Map.of());
+                "FX Trading ZA", "forex", "CN", Channel.ONLINE, when, Map.of());
     }
 
     private static RuleHit scoring(String type, long id, double weight) {
@@ -197,6 +201,25 @@ class TransactionProcessorTest {
         assertThat(saved.getValue().getRiskScore()).isEqualByComparingTo("0.40");
         assertThat(saved.getValue().getHits()).hasSize(1);
         assertThat(saved.getValue().getHits().get(0).getRuleType()).isEqualTo("HIGH_VALUE");
+    }
+
+    @Test
+    @DisplayName("an alert is stamped with the transaction's own time, not the time it was processed")
+    void alertCarriesTheTransactionTime() {
+        // A backdated transaction is the whole point: replaying a backlog, or
+        // seeding a history, hands the engine events from weeks ago. If the alert
+        // only remembered when it was written, every one of them would claim to
+        // have happened at the moment the engine caught up, and the dashboard's
+        // time axis would show one spike instead of the history.
+        Instant lastWeek = Instant.now().minus(7, java.time.temporal.ChronoUnit.DAYS);
+        Transaction t = txn(lastWeek);
+        engineReturns(t, scoring("HIGH_VALUE", 1, 0.40));
+
+        processor.process(t);
+
+        ArgumentCaptor<FraudAlertEntity> saved = ArgumentCaptor.forClass(FraudAlertEntity.class);
+        verify(alerts).save(saved.capture());
+        assertThat(saved.getValue().getOccurredAt()).isEqualTo(lastWeek);
     }
 
     // ---- redelivery -------------------------------------------------------

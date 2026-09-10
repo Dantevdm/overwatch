@@ -378,7 +378,7 @@ function Alerts({ alerts }) {
               </td>
               <td style={num}>{zar(a.amount)}</td>
               <td style={{ ...td, fontSize: 'var(--text-xs)' }}>{a.rules.join(', ') || '—'}</td>
-              <td style={{ ...td, color: 'var(--muted-fg)' }}>{shortTime(a.createdAt)}</td>
+              <td style={{ ...td, color: 'var(--muted-fg)' }}>{shortTime(a.occurredAt)}</td>
             </tr>
           ))}
         </tbody>

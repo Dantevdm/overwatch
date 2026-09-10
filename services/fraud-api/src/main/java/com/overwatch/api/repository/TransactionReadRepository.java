@@ -117,4 +117,21 @@ public interface TransactionReadRepository extends JpaRepository<TransactionEnti
     List<TransactionEntity> findByCustomerIdOrderByOccurredAtDesc(String customerId, Pageable pageable);
 
     long countByCustomerId(String customerId);
+
+    /**
+     * Transactions per bucket, for the volume the alert series is measured
+     * against. Same bucketing as {@code AlertRepository.bucketedCounts} and
+     * documented there: {@code date_bin} from the Unix epoch, so the two series
+     * share boundaries exactly and can be read against one another.
+     */
+    @Query(value = """
+            SELECT date_bin(make_interval(0, 0, 0, 0, 0, 0, CAST(:bucketSeconds AS double precision)),
+                            occurred_at, TIMESTAMPTZ 'epoch') AS bucket,
+                   COUNT(*)
+            FROM transactions
+            WHERE occurred_at >= :since
+            GROUP BY bucket ORDER BY bucket
+            """, nativeQuery = true)
+    List<Object[]> bucketedCounts(@Param("since") Instant since,
+                                  @Param("bucketSeconds") long bucketSeconds);
 }

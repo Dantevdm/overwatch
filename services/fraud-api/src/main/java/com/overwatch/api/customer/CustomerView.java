@@ -94,7 +94,8 @@ public final class CustomerView {
             String severity,
             String status,
             BigDecimal amount,
-            Instant createdAt,
+            /** When the flagged transaction happened, so it lines up with the trail. */
+            Instant occurredAt,
             List<String> rules
     ) {
     }

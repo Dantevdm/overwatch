@@ -21,13 +21,18 @@ public interface AlertRepository extends JpaRepository<FraudAlertEntity, UUID> {
      * <p>{@code since} is deliberately not nullable — see
      * {@link TransactionReadRepository#search} for why a nullable timestamp
      * parameter cannot work here. "No lower bound" is {@link Instant#EPOCH}.
+     *
+     * <p>Windowed and ordered on {@code occurredAt} rather than {@code createdAt},
+     * so "alerts from the last hour" means an hour of card activity and not an
+     * hour of engine uptime. The whole API is consistent on this: every window
+     * over alerts or transactions is a window over when things happened.
      */
     @Query("""
             SELECT a FROM FraudAlertEntity a
             WHERE (:severity IS NULL OR a.severity = :severity)
               AND (:status   IS NULL OR a.status   = :status)
-              AND a.createdAt >= :since
-            ORDER BY a.createdAt DESC
+              AND a.occurredAt >= :since
+            ORDER BY a.occurredAt DESC
             """)
     Page<FraudAlertEntity> search(@Param("severity") String severity,
                                   @Param("status") String status,
@@ -61,7 +66,7 @@ public interface AlertRepository extends JpaRepository<FraudAlertEntity, UUID> {
             LEFT JOIN FETCH a.hits
             WHERE a.transactionId IN (
                 SELECT t.id FROM TransactionEntity t WHERE t.customerId = :customerId)
-            ORDER BY a.createdAt DESC
+            ORDER BY a.occurredAt DESC
             """)
     List<FraudAlertEntity> findByCustomer(@Param("customerId") String customerId,
                                           Pageable pageable);
@@ -76,7 +81,7 @@ public interface AlertRepository extends JpaRepository<FraudAlertEntity, UUID> {
 
     @Query("""
             SELECT COALESCE(SUM(a.amount), 0) FROM FraudAlertEntity a
-            WHERE a.createdAt >= :since
+            WHERE a.occurredAt >= :since
             """)
     java.math.BigDecimal totalFlaggedSince(@Param("since") Instant since);
 
@@ -102,6 +107,12 @@ public interface AlertRepository extends JpaRepository<FraudAlertEntity, UUID> {
      * interpolated as text. That keeps the parameter explicitly typed — the same
      * discipline {@link TransactionReadRepository#search} documents at length.
      *
+     * <p>Bucketed on {@code occurred_at}, not {@code created_at}: the reader is
+     * asking when the card was being used, not when the engine got round to the
+     * message. The two agree to within a second on live traffic and disagree by
+     * weeks after a replay or a history seed, which is exactly the case where
+     * charting the write time collapses the whole backlog into one bucket.
+     *
      * <p>Binned from the Unix epoch so bucket boundaries are absolute rather than
      * relative to when the query ran. Two calls a second apart therefore return
      * the same buckets, and {@code StatsService} can compute the identical
@@ -109,10 +120,10 @@ public interface AlertRepository extends JpaRepository<FraudAlertEntity, UUID> {
      */
     @Query(value = """
             SELECT date_bin(make_interval(0, 0, 0, 0, 0, 0, CAST(:bucketSeconds AS double precision)),
-                            created_at, TIMESTAMPTZ 'epoch') AS bucket,
+                            occurred_at, TIMESTAMPTZ 'epoch') AS bucket,
                    severity, COUNT(*)
             FROM fraud_alerts
-            WHERE created_at >= :since
+            WHERE occurred_at >= :since
             GROUP BY bucket, severity ORDER BY bucket
             """, nativeQuery = true)
     List<Object[]> bucketedCountsBySeverity(@Param("since") Instant since,
@@ -121,10 +132,10 @@ public interface AlertRepository extends JpaRepository<FraudAlertEntity, UUID> {
     /** Alerts per bucket for the dashboard's time series. See above on bucketing. */
     @Query(value = """
             SELECT date_bin(make_interval(0, 0, 0, 0, 0, 0, CAST(:bucketSeconds AS double precision)),
-                            created_at, TIMESTAMPTZ 'epoch') AS bucket,
+                            occurred_at, TIMESTAMPTZ 'epoch') AS bucket,
                    COUNT(*)
             FROM fraud_alerts
-            WHERE created_at >= :since
+            WHERE occurred_at >= :since
             GROUP BY bucket ORDER BY bucket
             """, nativeQuery = true)
     List<Object[]> bucketedCounts(@Param("since") Instant since,

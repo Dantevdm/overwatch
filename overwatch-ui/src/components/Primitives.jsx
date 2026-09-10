@@ -90,7 +90,7 @@ function valueFontSize(value) {
   return 'var(--text-lg)';                  // 16px — "R68 343 795.35"
 }
 
-export function StatTile({ label, value, sub, tone }) {
+export function StatTile({ label, value, sub, tone, chart }) {
   const toneColor = {
     danger: 'var(--danger-fg)',
     warning: 'var(--warning-fg)',
@@ -129,6 +129,10 @@ export function StatTile({ label, value, sub, tone }) {
           {sub}
         </div>
       )}
+      {/* Optional trend, under the figure rather than behind it. A sparkline
+          drawn as a tile background makes the number harder to read to say
+          something the number does not; below it, both stay legible. */}
+      {chart && <div style={{ marginTop: 'var(--space-3)' }}>{chart}</div>}
     </div>
   );
 }

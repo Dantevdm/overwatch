@@ -198,7 +198,7 @@ public class TransactionProcessor {
                 BigDecimal.valueOf(evaluation.riskScore()),
                 evaluation.severity().name(),
                 FraudAlert.STATUS_OPEN,
-                txn.amount(), txn.currency());
+                txn.amount(), txn.currency(), txn.timestamp());
 
         for (RuleHit hit : evaluation.scoringHits()) {
             entity.addHit(new AlertRuleHitEntity(

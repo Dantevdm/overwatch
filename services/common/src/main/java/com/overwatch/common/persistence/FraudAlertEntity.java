@@ -35,6 +35,14 @@ public class FraudAlertEntity {
     @Column(nullable = false, length = 3)
     private String currency;
 
+    /**
+     * When the transaction happened, carried over from it. Distinct from
+     * {@link #createdAt}, which is when the engine wrote this row: the gap
+     * between them is the detection lag, and a replay makes it hours.
+     */
+    @Column(name = "occurred_at", nullable = false)
+    private Instant occurredAt;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 
@@ -51,8 +59,9 @@ public class FraudAlertEntity {
     }
 
     public FraudAlertEntity(UUID id, UUID transactionId, BigDecimal riskScore, String severity,
-                            String status, BigDecimal amount, String currency) {
+                            String status, BigDecimal amount, String currency, Instant occurredAt) {
         this.id = id;
+        this.occurredAt = occurredAt;
         this.transactionId = transactionId;
         this.riskScore = riskScore;
         this.severity = severity;
@@ -77,6 +86,7 @@ public class FraudAlertEntity {
 
     public UUID getId() { return id; }
     public UUID getTransactionId() { return transactionId; }
+    public Instant getOccurredAt() { return occurredAt; }
     public BigDecimal getRiskScore() { return riskScore; }
     public String getSeverity() { return severity; }
     public String getStatus() { return status; }

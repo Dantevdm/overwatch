@@ -391,7 +391,7 @@ public class CustomerService {
     private static AlertLine toAlertLine(FraudAlertEntity a) {
         return new AlertLine(a.getId(), a.getTransactionId(),
                 a.getRiskScore().doubleValue(), a.getSeverity(), a.getStatus(),
-                a.getAmount(), a.getCreatedAt(),
+                a.getAmount(), a.getOccurredAt(),
                 a.getHits().stream().map(AlertRuleHitEntity::getRuleType).distinct().sorted().toList());
     }
 

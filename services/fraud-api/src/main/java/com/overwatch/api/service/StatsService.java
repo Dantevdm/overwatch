@@ -112,16 +112,9 @@ public class StatsService {
             byCategory.put((String) row[0], ((Number) row[1]).longValue());
         }
 
-        Map<Instant, Long> counted = new HashMap<>();
-        for (Object[] row : alerts.bucketedCounts(rangeStart, bucketSeconds)) {
-            counted.put(toInstant(row[0]), ((Number) row[1]).longValue());
-        }
-        // Dense, for the same reason severitySeries is dense: a gap drawn as a
-        // straight line between two distant points invents a trend.
-        List<TimeBucket> series = new ArrayList<>();
-        for (Instant b : bucketBoundaries(rangeStart, bucketSeconds)) {
-            series.add(new TimeBucket(b, counted.getOrDefault(b, 0L)));
-        }
+        List<Instant> boundaries = bucketBoundaries(rangeStart, bucketSeconds);
+        List<TimeBucket> series = densify(alerts.bucketedCounts(rangeStart, bucketSeconds), boundaries);
+        List<TimeBucket> volume = densify(transactions.bucketedCounts(rangeStart, bucketSeconds), boundaries);
 
         return new DashboardStats(
                 transactions.count(),
@@ -132,7 +125,24 @@ public class StatsService {
                 Optional.ofNullable(alerts.totalFlaggedSince(dayAgo)).orElse(BigDecimal.ZERO),
                 bySeverity, byCategory,
                 rangeMinutes, bucketSeconds,
-                series, severitySeries(rangeStart, bucketSeconds));
+                series, volume, severitySeries(rangeStart, bucketSeconds));
+    }
+
+    /**
+     * Turn sparse {@code (bucket, count)} rows into one entry per boundary.
+     *
+     * <p>Dense, for the same reason {@link #severitySeries} is dense: a gap drawn
+     * as a straight line between two distant points invents a trend, and a quiet
+     * hour is a fact worth drawing.
+     */
+    private static List<TimeBucket> densify(List<Object[]> rows, List<Instant> boundaries) {
+        Map<Instant, Long> counted = new HashMap<>();
+        for (Object[] row : rows) {
+            counted.put(toInstant(row[0]), ((Number) row[1]).longValue());
+        }
+        return boundaries.stream()
+                .map(b -> new TimeBucket(b, counted.getOrDefault(b, 0L)))
+                .toList();
     }
 
     /**

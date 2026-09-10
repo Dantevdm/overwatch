@@ -51,22 +51,30 @@ public final class Dtos {
         }
     }
 
+    /**
+     * Both timestamps are exposed, and they mean different things.
+     * {@code occurredAt} is when the transaction happened — the one a reader
+     * wants on a timeline or an axis. {@code createdAt} is when the engine wrote
+     * the alert, which is only interesting as the other end of the detection lag,
+     * and after a replay the two are hours or weeks apart.
+     */
     public record AlertView(
             UUID id, UUID transactionId, BigDecimal riskScore, String severity,
             String status, BigDecimal amount, String currency,
-            Instant createdAt, Instant resolvedAt, List<RuleHitView> hits) {
+            Instant occurredAt, Instant createdAt, Instant resolvedAt,
+            List<RuleHitView> hits) {
 
         /** Summary form — no hits, for list views where they would be noise. */
         public static AlertView summary(FraudAlertEntity e) {
             return new AlertView(e.getId(), e.getTransactionId(), e.getRiskScore(),
                     e.getSeverity(), e.getStatus(), e.getAmount(), e.getCurrency(),
-                    e.getCreatedAt(), e.getResolvedAt(), List.of());
+                    e.getOccurredAt(), e.getCreatedAt(), e.getResolvedAt(), List.of());
         }
 
         public static AlertView detailed(FraudAlertEntity e) {
             return new AlertView(e.getId(), e.getTransactionId(), e.getRiskScore(),
                     e.getSeverity(), e.getStatus(), e.getAmount(), e.getCurrency(),
-                    e.getCreatedAt(), e.getResolvedAt(),
+                    e.getOccurredAt(), e.getCreatedAt(), e.getResolvedAt(),
                     e.getHits().stream().map(RuleHitView::from).toList());
         }
     }
@@ -112,6 +120,13 @@ public final class Dtos {
             Map<String, Long> transactionsByCategory,
             int rangeMinutes, long bucketSeconds,
             List<TimeBucket> alertsOverTime,
+            /**
+             * Transaction volume over the same buckets. Two alerts an hour is a
+             * quiet night or a broken detector depending entirely on how many
+             * transactions went past, and the dashboard could not tell the
+             * difference without this.
+             */
+            List<TimeBucket> transactionsOverTime,
             List<SeverityBucket> severityOverTime) {
     }
 
