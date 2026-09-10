@@ -3,6 +3,14 @@
 [![CI](https://github.com/Dantevdm/overwatch/actions/workflows/ci.yml/badge.svg)](https://github.com/Dantevdm/overwatch/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/Dantevdm/overwatch/actions/workflows/codeql.yml/badge.svg)](https://github.com/Dantevdm/overwatch/actions/workflows/codeql.yml)
 
+> The CodeQL badge reads *skipped* while this repository is private, and that is
+> deliberate rather than broken. Code scanning can only accept results where it
+> is enabled, which on a private repository means GitHub Advanced Security —
+> without it the scan runs perfectly and then fails on upload, reporting a red
+> build for a billing setting rather than a code problem. The workflow therefore
+> skips on private repositories and starts running by itself if the repository
+> becomes public or Advanced Security is enabled, with no edit needed.
+
 A fraud rule engine service. Overwatch ingests a stream of categorized card
 transactions, evaluates each one against a set of configurable fraud rules, scores
 the result, persists any alerts, and exposes everything through a REST API and a
