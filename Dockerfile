@@ -22,6 +22,12 @@ COPY services/transaction-simulator/pom.xml services/transaction-simulator/
 COPY services/fraud-engine/pom.xml          services/fraud-engine/
 COPY services/fraud-api/pom.xml             services/fraud-api/
 
+# The CLI's POM, and only its POM. Maven reads every module named in the root
+# reactor before it can select a subset, so a missing directory fails the build
+# outright — but the module is never built here, so its sources are not needed.
+# A service image has no use for a client.
+COPY tools/overwatch-cli/pom.xml            tools/overwatch-cli/
+
 # Retry settings for every Maven invocation here — Central drops handshakes.
 COPY .mvn .mvn
 
@@ -53,11 +59,16 @@ COPY services/transaction-simulator/src services/transaction-simulator/src
 COPY services/fraud-engine/src          services/fraud-engine/src
 COPY services/fraud-api/src             services/fraud-api/src
 
-# One reactor build. Tests run in CI, not here —
-# an image build that runs the test suite makes `docker compose up` slow for
-# everyone, every time, to re-prove what CI already proved on the commit.
+# One reactor build, of the three services and what they depend on. Tests run in
+# CI, not here — an image build that runs the test suite makes `docker compose
+# up` slow for everyone, every time, to re-prove what CI already proved on the
+# commit.
+#
+# -am pulls in common and rule-engine; -pl leaves out overwatch-cli, which
+# nothing in these images runs.
 RUN --mount=type=cache,target=/root/.m2 \
-    mvn -B -q clean package -DskipTests
+    mvn -B -q clean package -DskipTests \
+      -pl services/transaction-simulator,services/fraud-engine,services/fraud-api -am
 
 # Fail loudly, here, if any jar is not an executable Spring Boot archive.
 # A repackaged jar contains the Boot loader; a plain library jar does not, and
