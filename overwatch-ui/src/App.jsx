@@ -12,7 +12,8 @@ import ApiExplorer from './pages/ApiExplorer.jsx';
 import ResetData from './components/ResetData.jsx';
 import ExternalTools from './components/ExternalTools.jsx';
 import Splash from './components/Splash.jsx';
-import SignIn, { clearSession, readSession } from './components/SignIn.jsx';
+import SignIn, { clearSession, markVisited, readSession } from './components/SignIn.jsx';
+import WelcomeTour from './components/WelcomeTour.jsx';
 import { Lockup } from './components/Brand.jsx';
 import {
   IconAlerts, IconApi, IconCardholders, IconDashboard, IconMetrics,
@@ -83,15 +84,33 @@ const NAV = [
  */
 export default function App() {
   const [analyst, setAnalyst] = useState(() => readSession());
+  const [tour, setTour] = useState(false);
 
   if (!analyst) {
-    return <SignIn onSignedIn={setAnalyst} />;
+    return (
+      <SignIn onSignedIn={(who, { showTour }) => {
+        setAnalyst(who);
+        setTour(showTour);
+        // Recorded on sign-in rather than when the tour closes: someone who
+        // unticks the box has still been here, and should not be offered the
+        // tour again by default next time.
+        markVisited();
+      }} />
+    );
   }
 
   return (
-    <BrowserRouter>
-      <Shell analyst={analyst} onSignOut={() => { clearSession(); setAnalyst(null); }} />
-    </BrowserRouter>
+    <>
+      <BrowserRouter>
+        <Shell analyst={analyst} onSignOut={() => { clearSession(); setAnalyst(null); }} />
+      </BrowserRouter>
+      {/* Outside the router as well, and mounted over the app rather than
+          instead of it: the console is already loaded and polling behind the
+          tour, so closing it reveals a live screen rather than starting one. */}
+      {tour && (
+        <WelcomeTour analystName={analyst.name} onClose={() => setTour(false)} />
+      )}
+    </>
   );
 }
 

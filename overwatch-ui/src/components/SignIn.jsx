@@ -37,6 +37,31 @@ import { Lockup, Mark } from './Brand.jsx';
 
 const STORAGE_KEY = 'ow.demo.analyst';
 
+/**
+ * Whether this browser has ever opened the app. localStorage rather than
+ * sessionStorage, deliberately: the sign-in flag is per-tab so the screen is
+ * re-showable during a demo, but "have you seen the tour" is a fact about the
+ * person, and pre-ticking the box on every new tab would be a modal in the
+ * face of someone who has already read it.
+ */
+const RETURNING_KEY = 'ow.demo.returning';
+
+function isFirstEverVisit() {
+  try {
+    return localStorage.getItem(RETURNING_KEY) === null;
+  } catch {
+    // Storage blocked. Treating that as "returning" is the quieter wrong
+    // answer: an unwanted tour on every load is worse than a missed one.
+    return false;
+  }
+}
+
+export function markVisited() {
+  try {
+    localStorage.setItem(RETURNING_KEY, new Date().toISOString());
+  } catch { /* nothing to do — see isFirstEverVisit */ }
+}
+
 /** The prefilled identity. Invented — no such person, which is the point. */
 const DEMO_ANALYST = { username: 'l.mokoena', name: 'Lerato Mokoena', role: 'Fraud Analyst' };
 
@@ -63,6 +88,11 @@ export function clearSession() {
 export default function SignIn({ onSignedIn }) {
   const [username, setUsername] = useState(DEMO_ANALYST.username);
   const [password, setPassword] = useState('');
+  // Pre-ticked on a browser that has never opened this app, clear afterwards.
+  // So the tour appears once by itself, and any number of times on purpose —
+  // which is what a demo needs, because the person giving it wants to open it
+  // again in front of an audience.
+  const [firstTime, setFirstTime] = useState(isFirstEverVisit);
   const [busy, setBusy] = useState(false);
   const buttonRef = useRef(null);
 
@@ -84,7 +114,7 @@ export default function SignIn({ onSignedIn }) {
       try {
         sessionStorage.setItem(STORAGE_KEY, JSON.stringify(analyst));
       } catch { /* the flag is a nicety; the app works without it */ }
-      onSignedIn(analyst);
+      onSignedIn(analyst, { showTour: firstTime });
     }, 550);
   };
 
@@ -204,6 +234,26 @@ export default function SignIn({ onSignedIn }) {
                      // anyway. This is the value it actually respects.
                      autoComplete="new-password" style={INPUT} />
             </Field>
+
+            {/* A checkbox rather than a link, because on a first visit the
+                tour is the thing to do and the box being already ticked says
+                so — while still leaving it as one click to decline. */}
+            <label style={{
+              display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)',
+              fontSize: 'var(--text-sm)', cursor: 'pointer', lineHeight: 1.5,
+            }}>
+              <input type="checkbox" checked={firstTime}
+                     onChange={(e) => setFirstTime(e.target.checked)}
+                     style={{ marginTop: 2, width: 15, height: 15,
+                              accentColor: 'var(--accent)', cursor: 'pointer' }} />
+              <span>
+                First time signing in
+                <span style={{ display: 'block', fontSize: 'var(--text-xs)',
+                               color: 'var(--muted-fg)' }}>
+                  Show me what this application does
+                </span>
+              </span>
+            </label>
 
             <button ref={buttonRef} type="submit" disabled={busy} style={{
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
