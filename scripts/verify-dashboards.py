@@ -52,6 +52,22 @@ ALLOW_EMPTY = (
     "fraud_alerts_publish_failed_total",
 )
 
+# Queries that need more history than a CI run has. Deliberately a separate list
+# from ALLOW_EMPTY: there, empty means "nothing has gone wrong", which is good
+# news. Here it means "not enough traffic has happened yet", which is neither
+# good nor bad, and reporting the two the same way would be a small lie in the
+# output of a script whose whole purpose is not being lied to by a dashboard.
+#
+# The only current entry is the shadow-hit panel. The rule shipped in SHADOW is
+# AMOUNT_DEVIATION, which needs 10 prior transactions on the *same card* before
+# it will evaluate at all, and then a 5x outlier on top. With 2000 cards at 5/s
+# a given card is seen every 400 seconds, so ten of them is roughly 67 minutes —
+# an hour past the end of any CI run. On a stack that has been up a while the
+# panel fills in, which is why this is a warm-up allowance and not a fix.
+ALLOW_EMPTY_UNTIL_WARM = (
+    "fraud_shadow_hits_total",
+)
+
 
 def expand(expr: str) -> str:
     for name, value in VARIABLES.items():
@@ -103,6 +119,7 @@ def main() -> int:
                     continue
                 checked += 1
                 allowed = any(token in expr for token in ALLOW_EMPTY)
+                warming = any(token in expr for token in ALLOW_EMPTY_UNTIL_WARM)
 
                 # Retry the empties. On a stack that has just started, a panel
                 # keyed on alerts has genuinely seen no alerts yet, and failing
@@ -110,7 +127,7 @@ def main() -> int:
                 # is the one place it has to be believed.
                 ok, detail = query(args.url, expand(expr))
                 attempts = 0
-                while not ok and not allowed and attempts < args.retries:
+                while not ok and not allowed and not warming and attempts < args.retries:
                     time.sleep(3)
                     attempts += 1
                     ok, detail = query(args.url, expand(expr))
@@ -121,6 +138,8 @@ def main() -> int:
                     status = "ok  "
                 elif allowed:
                     status = "zero"          # empty, and that is the good news
+                elif warming:
+                    status = "warm"          # empty because the stack is young
                 else:
                     status = "FAIL"
                     failures += 1

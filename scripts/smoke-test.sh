@@ -63,6 +63,19 @@ wait_http() { # wait_http <url> <seconds>
 
 http_ok()      { curl -fsS -o /dev/null "$1"; }
 
+# Wait for an unpublished service to report readiness, probed from inside the
+# compose network. Needed because the two services with no host port are also
+# the two that take longest to become useful.
+wait_internal() { # wait_internal <service> <port> <seconds>
+  local svc="$1" port="$2" deadline=$(( SECONDS + ${3:-120} ))
+  while (( SECONDS < deadline )); do
+    if docker compose exec -T "$svc" wget -qO- "http://localhost:$port/actuator/health/readiness" 2>/dev/null \
+         | grep -q UP; then return 0; fi
+    sleep 3
+  done
+  return 1
+}
+
 # The engine and simulator are not published to the host, so probe them from
 # inside the compose network. That is also the truer test: it exercises exactly
 # the path Prometheus uses to scrape them.
@@ -106,10 +119,27 @@ section "Waiting for services to become ready (up to 3 min)"
 # ---------------------------------------------------------------------------
 API_BASE="http://localhost:${OW_API_PORT:-8080}"
 
+# Every service, not just this one. Waiting only for fraud-api is what made
+# this suite fail in CI: fraud-api is ready in about forty seconds, while the
+# simulator waits on the engine first and is not serving for another twenty.
+# Six checks then failed with a single cause — a stack that was still starting.
 if wait_http "$API_BASE/actuator/health" 180; then
   printf '  %sREADY%s fraud-api\n' "$G" "$N"
 else
   printf '  %sTIMEOUT%s fraud-api — check: docker compose logs fraud-api\n' "$R" "$N"
+fi
+
+if [[ "$have_docker" -eq 1 ]]; then
+  for svc_port in "fraud-engine:8082" "transaction-simulator:8081"; do
+    svc="${svc_port%%:*}"; port="${svc_port##*:}"
+    if wait_internal "$svc" "$port" 180; then
+      printf '  %sREADY%s %s\n' "$G" "$N" "$svc"
+    else
+      printf '  %sTIMEOUT%s %s — check: docker compose logs %s\n' "$R" "$N" "$svc" "$svc"
+    fi
+  done
+else
+  skip "readiness wait for the unpublished services (needs docker compose)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -201,15 +231,24 @@ section "Prometheus"
 # ---------------------------------------------------------------------------
 check "Prometheus is up" http_ok "http://localhost:${OW_PROMETHEUS_PORT:-9090}/-/healthy"
 
+# Polled, not asserted once. A target is "down" until Prometheus has actually
+# scraped it, so on a cold stack this races the 10s scrape interval — and the
+# service that comes up last is the one that has not been scraped yet. Asking
+# once reported 3 of 4 in CI while the stack was entirely fine.
 if curl -fsS "http://localhost:${OW_PROMETHEUS_PORT:-9090}/api/v1/targets" >/dev/null 2>&1; then
-  up_count=$(curl -fsS "http://localhost:${OW_PROMETHEUS_PORT:-9090}/api/v1/targets" 2>/dev/null \
-    | grep -o '"health":"up"' | wc -l | tr -d ' ')
-  # 3 services + prometheus scraping itself
+  up_count=0
+  for _ in $(seq 1 15); do
+    up_count=$(curl -fsS "http://localhost:${OW_PROMETHEUS_PORT:-9090}/api/v1/targets" 2>/dev/null \
+      | grep -o '"health":"up"' | wc -l | tr -d ' ')
+    # 3 services + prometheus scraping itself
+    [[ "${up_count:-0}" -ge 4 ]] && break
+    sleep 3
+  done
   if [[ "${up_count:-0}" -ge 4 ]]; then
     printf '  %sPASS%s  all scrape targets healthy (%s up)\n' "$G" "$N" "$up_count"; PASS=$((PASS + 1))
   else
-    printf '  %sFAIL%s  expected >=4 healthy targets, got %s — see http://localhost:${OW_PROMETHEUS_PORT:-9090}/targets\n' \
-      "$R" "$N" "${up_count:-0}"; FAIL=$((FAIL + 1))
+    printf '  %sFAIL%s  expected >=4 healthy targets, got %s after 45s — see http://localhost:%s/targets\n' \
+      "$R" "$N" "${up_count:-0}" "${OW_PROMETHEUS_PORT:-9090}"; FAIL=$((FAIL + 1))
   fi
 else
   skip "target enumeration (Prometheus API unreachable)"
@@ -222,7 +261,7 @@ fi
 # itself healthy. Asserted directly it would be flaky on a cold stack, which is
 # worse than not checking it at all.
 lag_series=""
-for _ in $(seq 1 20); do
+for _ in $(seq 1 40); do
   lag_series=$(curl -fsG "http://localhost:${OW_PROMETHEUS_PORT:-9090}/api/v1/query" \
     --data-urlencode 'query=kafka_consumer_fetch_manager_records_lag' 2>/dev/null \
     | grep -o '"metric"' | wc -l | tr -d ' ')
@@ -232,7 +271,7 @@ done
 if [[ "${lag_series:-0}" -gt 0 ]]; then
   printf '  %sPASS%s  consumer lag is being scraped (%s partition series)\n' "$G" "$N" "$lag_series"; PASS=$((PASS + 1))
 else
-  printf '  %sFAIL%s  no kafka_consumer_fetch_manager_records_lag series after 60s — '\
+  printf '  %sFAIL%s  no kafka_consumer_fetch_manager_records_lag series after 120s — '\
 'the engine may not be consuming\n' "$R" "$N"; FAIL=$((FAIL + 1))
 fi
 

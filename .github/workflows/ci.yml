@@ -170,8 +170,13 @@ jobs:
       - name: Build images
         run: docker compose build
 
+      # --wait blocks until every service with a health check reports healthy,
+      # and fails the step if one never does. Without it `up -d` returns as soon
+      # as the containers are created, so the smoke test below started asserting
+      # against a stack that was still booting — which is exactly how this job
+      # came to report six failures with one cause.
       - name: Start the stack
-        run: docker compose up -d
+        run: docker compose up -d --wait --wait-timeout 300
 
       - name: Smoke test
         run: ./scripts/smoke-test.sh

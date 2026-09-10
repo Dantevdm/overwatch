@@ -166,6 +166,19 @@ services:
       # Start producing only once there is something to consume the stream.
       fraud-engine:
         condition: service_healthy
+    # This service is the last thing in the stack to become useful — it waits on
+    # the engine, then boots Spring, then connects a producer — and without a
+    # health check nothing could observe that. `docker compose up -d` returned
+    # while it was still starting, so CI's smoke test asserted against a
+    # simulator that was not yet serving and reported six failures with one
+    # cause. A service whose readiness something else depends on needs a health
+    # check, even when nothing scrapes it from the host.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/actuator/health/readiness | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
     restart: unless-stopped
 
   overwatch-ui:
