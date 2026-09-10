@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.overwatch</groupId>
+        <artifactId>overwatch</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>overwatch-cli</artifactId>
+    <name>Overwatch CLI</name>
+    <description>
+        The console as a command-line tool. Deliberately not a Spring Boot
+        application: there is no context to build, no component scan and no
+        embedded server, so `ow status` answers in about a fifth of a second
+        instead of two. A CLI that takes as long as a page load is a CLI nobody
+        reaches for.
+    </description>
+
+    <properties>
+        <picocli.version>4.7.6</picocli.version>
+        <shade.version>3.6.0</shade.version>
+        <!-- No coverage floor. This module is presentation: argument parsing,
+             HTTP calls and table formatting. What is worth asserting here is
+             the formatting logic, and that is what the tests cover. -->
+        <jacoco.line.coverage>0.00</jacoco.line.coverage>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>info.picocli</groupId>
+            <artifactId>picocli</artifactId>
+            <version>${picocli.version}</version>
+        </dependency>
+        <!-- Version managed by the Spring Boot BOM in the parent, so the CLI
+             and the services cannot end up on different Jackson lines. -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- The parent adds spring-boot-starter-actuator and the Prometheus
+             registry to every module, on the principle that observability is
+             not opt-in. That is right for the four services and wrong here:
+             this is a client, it exposes no endpoints and serves no metrics,
+             and there is nothing to scrape a process that exits in a fifth of
+             a second.
+
+             Redeclared as `provided` rather than excluded, because a module
+             cannot exclude a dependency it inherits directly. Provided scope
+             keeps them off the shaded jar, which took it from 16MB to under
+             two — and, more to the point, keeps a Spring starter out of a tool
+             whose whole argument is that it does not start a Spring
+             context. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>overwatch-cli</finalName>
+        <plugins>
+            <!-- One self-contained jar, so `bin/ow` is `java -jar` and nothing
+                 else. Shade rather than the Boot repackager: the Boot loader
+                 exists to serve a Spring application and adds startup work
+                 this has no use for. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>${shade.version}</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals><goal>shade</goal></goals>
+                        <configuration>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <!-- combine.self="override", and it is load-bearing.
+                                 spring-boot-starter-parent already configures
+                                 maven-shade-plugin with its own transformer
+                                 list, and Maven merges configuration lists
+                                 element by element by POSITION. Without this,
+                                 the first transformer below inherits the
+                                 parent's first transformer's <resource>
+                                 element and the build dies with "Cannot find
+                                 'resource' in ManifestResourceTransformer". -->
+                            <transformers combine.self="override">
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>com.overwatch.cli.Ow</mainClass>
+                                </transformer>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                            </transformers>
+                            <filters combine.self="override">
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <!-- Signature files from a signed
+                                         dependency do not survive being
+                                         repacked, and a jar that keeps them
+                                         fails to launch with a security
+                                         exception rather than a useful error. -->
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                        <exclude>module-info.class</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

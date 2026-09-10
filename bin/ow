@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# The `ow` launcher.
+#
+# A shell wrapper rather than an alias, so it works from a script, from cron and
+# from a shell that never sourced anyone's profile. It finds the shaded jar
+# relative to itself, so a checkout can live anywhere and bin/ow still works,
+# whatever the working directory is.
+#
+#   make cli && ./bin/ow status
+#
+# Put it on PATH with a symlink if you use it often:
+#   ln -s "$PWD/bin/ow" /usr/local/bin/ow
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+jar="$here/../tools/overwatch-cli/target/overwatch-cli.jar"
+
+if [ ! -f "$jar" ]; then
+  echo "The CLI is not built yet. Run:  make cli" >&2
+  exit 127
+fi
+
+# Pick a JVM deliberately rather than trusting whatever `java` resolves to.
+#
+# A machine with several JDKs installed very often has an old one first on
+# PATH — this one had a Java 8 built for the wrong CPU architecture, which
+# fails with "Bad CPU type in executable" and says nothing at all about
+# versions. The jar is Java 25 bytecode, so the wrong JVM is guaranteed to
+# fail; the only question is whether it fails legibly.
+#
+# JAVA_HOME wins if set, then macOS's java_home, then PATH.
+if [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/java" ]; then
+  java_bin="$JAVA_HOME/bin/java"
+elif [ -x /usr/libexec/java_home ] && home="$(/usr/libexec/java_home -v 25 2>/dev/null)"; then
+  java_bin="$home/bin/java"
+else
+  java_bin="$(command -v java || true)"
+fi
+
+if [ -z "$java_bin" ]; then
+  echo "No Java runtime found. This needs Java 25 — set JAVA_HOME." >&2
+  exit 127
+fi
+
+# exec, so signals reach the JVM directly. Without it ctrl-c kills this shell
+# and leaves `ow top` running with the terminal's cursor still hidden.
+exec "$java_bin" -jar "$jar" "$@"

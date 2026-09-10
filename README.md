@@ -336,8 +336,10 @@ overwatch/
 │       ├── prometheus/          #   Scrape configuration
 │       └── grafana/             #   Provisioned datasources and dashboards
 ├── tools/                       # Developer tooling, not shipped or deployed
+│   ├── overwatch-cli/           #   `ow` — the console as a terminal client
 │   ├── postman/                 #   Collection and environment
 │   └── quality/                 #   PMD ruleset, SpotBugs exclusions
+├── bin/ow                       # Launcher for the CLI — picks a Java 25 JVM
 ├── scripts/                     # preflight, smoke test, verification scripts
 ├── docs/
 │   ├── architecture/            #   Architecture document and dashboard mockup
@@ -474,6 +476,50 @@ Patterns: `HIGH_VALUE`, `VELOCITY_BURST`, `LATE_NIGHT`, `ROUND_AMOUNT`,
 
 ---
 
+## The command line
+
+The same console, without the browser. `ow` talks to the same API the dashboard
+does — there is no second data path, no direct database access and no privileged
+endpoint that exists only for it, so anything it shows you can be checked in the
+UI and anything it changes shows up there.
+
+```bash
+make cli          # builds tools/overwatch-cli into a 2.9MB shaded jar
+./bin/ow status   # is the stack up, and is the engine keeping up
+```
+
+| Command | What it answers |
+| --- | --- |
+| `ow status` | Is everything up, and is the consumer group behind |
+| `ow top` | The live pipeline, refreshing in place — `--once` for one frame |
+| `ow alerts list` / `show` / `watch` | What was flagged, why, and as it happens |
+| `ow txn list` | The raw stream, newest first |
+| `ow cardholder list` / `show` | The directory, and one person's profile |
+| `ow rules list` / `state` / `weight` | The rule set, and retuning it live |
+| `ow sim start` / `pause` / `rate` / `inject` | Drive the traffic |
+| `ow sweep --rule HIGH_VALUE` | Where a threshold should sit, in one pass |
+| `ow reset` | Clear the store. Destructive, and it asks |
+
+Three decisions are worth calling out, because they are the difference between a
+tool and a pile of curl invocations:
+
+- **Colour is an accelerator, never the carrier.** A severity always prints its
+  label. This output goes into pipes, logs and terminals with palettes a reader
+  cannot distinguish, and "the red ones" is not a specification. Colour turns
+  itself off for a pipe, and honours `NO_COLOR`.
+- **Tables measure what they show.** Widths come from the visible width of a
+  cell, ignoring escape sequences — which is why the columns line up even when
+  half of them are coloured.
+- **`ow reset` refuses to guess.** It asks you to type the word `clear` rather
+  than to press `y`, and with no terminal to ask at it refuses outright and names
+  `--yes`. The API behind it is destructive and unauthenticated; assuming consent
+  from a pipe is how that ends up running in CI.
+
+`--api` points it at another stack, or set `OVERWATCH_API`. Everything reads
+from `localhost:8080` by default, which is where compose puts the API.
+
+---
+
 ## Quality gates
 
 `mvn verify` is the gate, and it fails the build rather than producing a report
@@ -546,6 +592,7 @@ all: rule parameters are JSONB.
 | Flyway | Schema is versioned and applied identically on a fresh volume, an existing one, and in CI. Hibernate runs `ddl-auto: validate`, so a drift between entities and migrations fails at startup instead of silently corrupting data. |
 | React 18 + Vite | Fast dev loop, no framework overhead for what is a dashboard. |
 | Prometheus + Grafana | The default pairing for Micrometer, and provisioning-as-code means no manual setup. |
+| picocli | The CLI's subcommands, help and completion come from annotations on the classes that do the work, so the help cannot drift from the behaviour. It shades to a single 2.9MB jar with no runtime on the machine but a JVM. |
 
 Specialised financial stores (TigerBeetle and similar) were considered and set aside:
 they are built for double-entry ledger throughput, which is not this problem. Overwatch

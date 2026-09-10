@@ -25,6 +25,10 @@
         <module>services/transaction-simulator</module>
         <module>services/fraud-engine</module>
         <module>services/fraud-api</module>
+        <!-- Not a service. A command-line client over the same API the browser
+             uses, built in the same reactor so it cannot drift from the
+             endpoints it calls. -->
+        <module>tools/overwatch-cli</module>
     </modules>
 
     <properties>

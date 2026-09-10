@@ -47,5 +47,9 @@ build: ## Compile and package without starting anything
 verify: ## Full quality gate — tests, coverage, SpotBugs, PMD
 	mvn -B clean verify
 
+cli: ## Build the `ow` command-line client (then run ./bin/ow)
+	mvn -B -q -pl tools/overwatch-cli -am package -DskipTests
+	@echo "Built. Try: ./bin/ow status"
+
 test: ## Run unit tests only
 	mvn -B test
