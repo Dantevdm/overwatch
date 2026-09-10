@@ -14,7 +14,9 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 @RestController
@@ -49,7 +51,8 @@ public class TransactionController {
             String customer,
             @RequestParam(defaultValue = "24") int hours,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "25") int size) {
+            @Parameter(description = "Rows per page, 1-200. Ten by default, matching the UI.")
+            @RequestParam(defaultValue = "10") int size) {
 
         // EPOCH rather than null for "no window": the query compares against this
         // unconditionally, because a nullable timestamp parameter is one Postgres
@@ -66,6 +69,20 @@ public class TransactionController {
                 "size", found.getSize(),
                 "totalElements", found.getTotalElements(),
                 "totalPages", found.getTotalPages());
+    }
+
+    @GetMapping("/categories")
+    @Operation(summary = "Merchant categories present in the data, most common first",
+            description = """
+                    What the category filter offers. Derived from the transactions
+                    themselves rather than from a fixed list, so a category can
+                    never appear in the filter with no rows behind it.""")
+    @Transactional(readOnly = true)
+    public List<String> categories() {
+        return transactions.countByCategory().stream()
+                .map(row -> (String) row[0])
+                .filter(Objects::nonNull)
+                .toList();
     }
 
     @GetMapping("/{id}")

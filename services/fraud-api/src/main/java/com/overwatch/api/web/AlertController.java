@@ -4,6 +4,7 @@ import com.overwatch.api.dto.Dtos.AlertView;
 import com.overwatch.api.repository.AlertRepository;
 import com.overwatch.common.persistence.FraudAlertEntity;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -40,7 +41,8 @@ public class AlertController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false, defaultValue = "168") int hours,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "25") int size) {
+            @Parameter(description = "Rows per page, 1-200. Ten by default, matching the UI.")
+            @RequestParam(defaultValue = "10") int size) {
 
         // EPOCH rather than null for "no window" — see AlertRepository#search.
         Instant since = hours > 0 ? Instant.now().minus(hours, ChronoUnit.HOURS) : Instant.EPOCH;

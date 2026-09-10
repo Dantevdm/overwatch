@@ -67,6 +67,11 @@ export const api = {
   alert: (id) => get(`/alerts/${id}`),
   setAlertStatus: (id, status) => send('PATCH', `/alerts/${id}/status`, { status }),
   transactions: (p) => get('/transactions', p),
+  // The categories actually present in the data, most common first. Fetched
+  // rather than hardcoded: the simulator's merchant list is the authority on
+  // what exists, and a dropdown offering a category with no rows behind it is
+  // a dropdown that lies.
+  transactionCategories: () => get('/transactions/categories'),
   rules: () => get('/rules'),
   rulePerformance: () => get('/rules/performance'),
   setRuleState: (id, state) => send('PATCH', `/rules/${id}/state`, { state }),
@@ -140,6 +145,36 @@ export const RANGES = [
 ];
 
 export const DEFAULT_RANGE = 1440;
+
+/**
+ * Rows per page, and the default.
+ *
+ * Ten by default. A table is a thing you scan and then act on, and a screen that
+ * opens with fifty rows makes the reader scroll past the paging controls to
+ * discover they exist — so the first page fits inside the card, and the reader
+ * asks for more if they want it. Matches the API's own default, so a request
+ * from Postman and a request from this UI return the same page.
+ */
+export const PAGE_SIZES = [10, 25, 50];
+export const DEFAULT_PAGE_SIZE = 10;
+
+/**
+ * The windows a table can be filtered to.
+ *
+ * Distinct from RANGES, which the dashboard uses: a chart's window decides how
+ * the data is bucketed and is capped at seven days by the server, whereas a
+ * table's window is just a lower bound and "everything" is a legitimate answer.
+ * Sent as `hours`, with 0 meaning no bound at all.
+ */
+export const TABLE_WINDOWS = [
+  { value: 24,   label: 'Last 24 hours' },
+  { value: 72,   label: 'Last 3 days' },
+  { value: 168,  label: 'Last 7 days' },
+  { value: 720,  label: 'Last 30 days' },
+  { value: 0,    label: 'All time' },
+];
+
+export const DEFAULT_WINDOW = 168;
 
 /**
  * "10 seconds", "30 minutes", "6 hours" — a bucket width in words.

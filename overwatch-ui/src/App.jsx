@@ -13,18 +13,50 @@ import ResetData from './components/ResetData.jsx';
 import ExternalTools from './components/ExternalTools.jsx';
 import { api } from './api.js';
 
+/**
+ * The navigation, grouped by what you came here to do.
+ *
+ * Nine flat links is a list you read every time rather than a place you know
+ * your way around — nothing tells you that Cardholders and Transactions answer
+ * the same kind of question, or that Streams and Metrics are about the plumbing
+ * rather than about fraud. The groups are the four reasons to open this app:
+ * watch it, investigate something, change how it behaves, or look underneath it.
+ *
+ * Order within a group is by how often it is opened, not alphabetically.
+ */
 const NAV = [
-  { to: '/dashboard', label: 'Dashboard' },
-  { to: '/transactions', label: 'Transactions' },
-  { to: '/customers', label: 'Cardholders' },
-  { to: '/alerts', label: 'Alerts' },
-  { to: '/rules', label: 'Rules' },
-  { to: '/metrics', label: 'Metrics' },
-  { to: '/streams', label: 'Streams' },
-  { to: '/simulator', label: 'Simulator' },
-  // Deliberately not '/api': that prefix is the Vite proxy's, so a route there
-  // is handed to the BFF and the browser gets the API's 404 instead of this page.
-  { to: '/api-explorer', label: 'API' },
+  {
+    heading: 'Monitor',
+    items: [
+      { to: '/dashboard', label: 'Dashboard' },
+      { to: '/alerts', label: 'Alerts' },
+    ],
+  },
+  {
+    heading: 'Investigate',
+    items: [
+      { to: '/transactions', label: 'Transactions' },
+      { to: '/customers', label: 'Cardholders' },
+    ],
+  },
+  {
+    heading: 'Configure',
+    items: [
+      { to: '/rules', label: 'Rules' },
+      { to: '/simulator', label: 'Simulator' },
+    ],
+  },
+  {
+    heading: 'Platform',
+    items: [
+      { to: '/streams', label: 'Streams' },
+      { to: '/metrics', label: 'Metrics' },
+      // Deliberately not '/api': that prefix is the Vite proxy's, so a route
+      // there is handed to the BFF and the browser gets the API's 404 instead
+      // of this page.
+      { to: '/api-explorer', label: 'API' },
+    ],
+  },
 ];
 
 export default function App() {
@@ -75,26 +107,47 @@ function Shell() {
         </div>
 
         <nav style={{ padding: 'var(--space-2)', flex: 1, minHeight: 0, overflowY: 'auto' }}>
-          {NAV.map((item) => (
-            <NavLink key={item.to} to={item.to} style={({ isActive }) => ({
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: 'var(--row-pad)', borderRadius: 'var(--radius-md)',
-              color: 'var(--side-fg)', textDecoration: 'none',
-              fontSize: 'var(--text-base)', fontWeight: isActive ? 600 : 400,
-              background: isActive ? 'var(--side-active)' : 'transparent',
-              marginBottom: 2,
-            })}>
-              {item.label}
-              {item.to === '/alerts' && openAlerts > 0 && (
-                <span style={{
-                  background: 'rgba(255,255,255,.22)', borderRadius: 'var(--radius-full)',
-                  padding: '1px 8px', fontSize: 'var(--text-xs)', fontWeight: 700,
-                  fontVariantNumeric: 'tabular-nums',
-                }}>
-                  {openAlerts}
-                </span>
-              )}
-            </NavLink>
+          {NAV.map((group) => (
+            // A real <ul> per group, labelled by its heading. The grouping is
+            // then structure rather than decoration, so a screen reader
+            // announces "Investigate, list, 2 items" instead of reading nine
+            // links with two visual gaps it cannot see.
+            <section key={group.heading} aria-labelledby={`nav-${group.heading}`}
+                     style={{ marginBottom: 'var(--space-4)' }}>
+              <h2 id={`nav-${group.heading}`} style={{
+                margin: 0, padding: '0 var(--space-3) var(--space-2)',
+                fontSize: 'var(--text-xs)', fontWeight: 600,
+                letterSpacing: '.06em', textTransform: 'uppercase',
+                color: 'var(--side-fg)', opacity: 0.5,
+              }}>
+                {group.heading}
+              </h2>
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                {group.items.map((item) => (
+                  <li key={item.to}>
+                    <NavLink to={item.to} style={({ isActive }) => ({
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: 'var(--row-pad)', borderRadius: 'var(--radius-md)',
+                      color: 'var(--side-fg)', textDecoration: 'none',
+                      fontSize: 'var(--text-base)', fontWeight: isActive ? 600 : 400,
+                      background: isActive ? 'var(--side-active)' : 'transparent',
+                      marginBottom: 2,
+                    })}>
+                      {item.label}
+                      {item.to === '/alerts' && openAlerts > 0 && (
+                        <span style={{
+                          background: 'rgba(255,255,255,.22)', borderRadius: 'var(--radius-full)',
+                          padding: '1px 8px', fontSize: 'var(--text-xs)', fontWeight: 700,
+                          fontVariantNumeric: 'tabular-nums',
+                        }}>
+                          {openAlerts}
+                        </span>
+                      )}
+                    </NavLink>
+                  </li>
+                ))}
+              </ul>
+            </section>
           ))}
         </nav>
 

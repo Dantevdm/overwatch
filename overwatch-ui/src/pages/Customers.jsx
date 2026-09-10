@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { api, zar, shortTime, SEVERITY_COLOR } from '../api.js';
 import {
-  Button, Card, Empty, SeverityBadge, StatTile, StatusBadge,
+  api, zar, shortTime, SEVERITY_COLOR, PAGE_SIZES, DEFAULT_PAGE_SIZE,
+} from '../api.js';
+import {
+  Button, Card, Empty, Pagination, SeverityBadge, StatTile, StatusBadge, useClientPaging,
 } from '../components/Primitives.jsx';
 
 /**
@@ -35,11 +37,21 @@ function Directory() {
   const [rows, setRows] = useState(null);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
+  const [size, setSize] = useState(DEFAULT_PAGE_SIZE);
+  const [pages, setPages] = useState(1);
   const [error, setError] = useState(null);
 
-  const load = useCallback(() => api.customers({ query, page, size: 20 })
-    .then((r) => { setRows(r.content); setTotal(r.totalElements); setError(null); })
-    .catch((e) => setError(e.message)), [query, page]);
+  const load = useCallback(() => api.customers({ query, page, size })
+    .then((r) => {
+      setRows(r.content);
+      setTotal(r.totalElements);
+      // Taken from the response rather than divided out here. The page count was
+      // previously computed as total/20 against a size that was written down in
+      // two places, so it went wrong the moment the size became adjustable.
+      setPages(r.totalPages);
+      setError(null);
+    })
+    .catch((e) => setError(e.message)), [query, page, size]);
 
   // Debounced, so typing a surname is one request rather than one per keystroke.
   useEffect(() => {
@@ -49,10 +61,7 @@ function Directory() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
-      <Card title="Cardholders"
-            action={<span style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-fg)' }}>
-              {total.toLocaleString('en-ZA')} observed
-            </span>}>
+      <Card title="Cardholders">
         <p style={{ marginTop: 0, fontSize: 'var(--text-sm)', color: 'var(--muted-fg)',
                     maxWidth: '80ch' }}>
           Built from the transactions that named them, not read from a customer
@@ -77,7 +86,13 @@ function Directory() {
         {error && <p style={{ color: 'var(--danger-fg)', fontSize: 'var(--text-sm)' }}>{error}</p>}
 
         {rows === null ? <Empty>Loading…</Empty>
-          : rows.length === 0 ? <Empty>Nobody matches “{query}”.</Empty> : (
+          : rows.length === 0 ? (
+            <Empty>
+              Nobody matches “{query}”.
+              {query && <> <button onClick={() => { setQuery(''); setPage(0); }}
+                                   style={linkButton}>Clear the search</button>.</>}
+            </Empty>
+          ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse',
                           fontSize: 'var(--text-sm)', marginTop: 'var(--space-4)' }}>
             <thead>
@@ -113,18 +128,9 @@ function Directory() {
           </table>
         )}
 
-        <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center',
-                      marginTop: 'var(--space-4)' }}>
-          <Button disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
-            Previous
-          </Button>
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-fg)' }}>
-            Page {page + 1} of {Math.max(1, Math.ceil(total / 20))}
-          </span>
-          <Button disabled={(page + 1) * 20 >= total} onClick={() => setPage((p) => p + 1)}>
-            Next
-          </Button>
-        </div>
+        <Pagination page={page} size={size} onPage={setPage} onSize={setSize}
+                    sizes={PAGE_SIZES} noun="cardholders"
+                    totalElements={total} totalPages={pages} />
       </Card>
     </div>
   );
@@ -355,6 +361,11 @@ function DayShape({ hours }) {
 }
 
 function Alerts({ alerts }) {
+  // Paged in the browser: the API already returned the whole (capped) list, so
+  // there is nothing to fetch, but fifty rows in a profile card is still fifty
+  // rows of scrolling past the panels underneath it.
+  const paged = useClientPaging(alerts, DEFAULT_PAGE_SIZE);
+
   return (
     <Card title={`Alerts raised against this cardholder (${alerts.length})`}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
@@ -369,7 +380,7 @@ function Alerts({ alerts }) {
           </tr>
         </thead>
         <tbody>
-          {alerts.map((a) => (
+          {paged.rows.map((a) => (
             <tr key={a.id} style={{ borderTop: '1px solid var(--border)' }}>
               <td style={td}><SeverityBadge severity={a.severity} /></td>
               <td style={td}><StatusBadge status={a.status} /></td>
@@ -383,11 +394,14 @@ function Alerts({ alerts }) {
           ))}
         </tbody>
       </table>
+      <Pagination {...paged.props} sizes={PAGE_SIZES} noun="alerts" />
     </Card>
   );
 }
 
 function Recent({ rows }) {
+  const paged = useClientPaging(rows, DEFAULT_PAGE_SIZE);
+
   return (
     <Card title="Most recent transactions">
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
@@ -403,7 +417,7 @@ function Recent({ rows }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((t) => (
+          {paged.rows.map((t) => (
             <tr key={t.id} style={{
               borderTop: '1px solid var(--border)',
               // A flagged row is tinted and carries a marker in the amount cell —
@@ -429,10 +443,15 @@ function Recent({ rows }) {
           ))}
         </tbody>
       </table>
+      <Pagination {...paged.props} sizes={PAGE_SIZES} noun="transactions" />
     </Card>
   );
 }
 
+const linkButton = {
+  background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+  color: 'var(--brand)', fontWeight: 600, fontSize: 'inherit',
+};
 const th = { padding: 'var(--row-pad)', fontWeight: 600, whiteSpace: 'nowrap' };
 const td = { padding: 'var(--row-pad)', verticalAlign: 'middle' };
 const num = { ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' };

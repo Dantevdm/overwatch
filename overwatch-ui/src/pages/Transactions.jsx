@@ -1,45 +1,71 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, zar, shortTime } from '../api.js';
-import { Card, Empty } from '../components/Primitives.jsx';
+import {
+  api, zar, shortTime, PAGE_SIZES, DEFAULT_PAGE_SIZE, TABLE_WINDOWS, DEFAULT_WINDOW,
+} from '../api.js';
+import {
+  Card, Empty, FilterBar, Pagination, Select, TextFilter,
+} from '../components/Primitives.jsx';
 
 export default function Transactions() {
   const [data, setData] = useState(null);
+  const [categories, setCategories] = useState([]);
   const [category, setCategory] = useState('');
   const [cardId, setCardId] = useState('');
   // Cardholder name, matched as a substring. The card filter is still here and
   // still exact, because the two answer different questions: a card is what a
   // rule fires on, a person is what an investigation is about.
   const [customer, setCustomer] = useState('');
+  const [hours, setHours] = useState(DEFAULT_WINDOW);
   const [page, setPage] = useState(0);
+  const [size, setSize] = useState(DEFAULT_PAGE_SIZE);
+
+  // Every filter resets to the first page. Changing a filter while on page 12
+  // otherwise lands the reader on an empty page of a result set that does have
+  // rows, which reads as "no matches" and is not.
+  const filter = (set) => (value) => { set(value); setPage(0); };
+
+  const active = Boolean(category || cardId || customer) || hours !== DEFAULT_WINDOW;
+  const clear = () => {
+    setCategory(''); setCardId(''); setCustomer('');
+    setHours(DEFAULT_WINDOW); setPage(0);
+  };
+
+  useEffect(() => {
+    api.transactionCategories().then(setCategories).catch(() => setCategories([]));
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => {
-      api.transactions({ category, cardId, customer, hours: 24, page, size: 25 })
+      api.transactions({ category, cardId, customer, hours, page, size })
         .then(setData).catch(() => setData(null));
     }, 250);   // debounce so typing a card id does not fire a request per keystroke
     return () => clearTimeout(t);
-  }, [category, cardId, customer, page]);
+  }, [category, cardId, customer, hours, page, size]);
 
   return (
     <Card
       title="Transactions"
       action={
-        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-          <input value={customer} placeholder="Cardholder name…"
-                 onChange={(e) => { setCustomer(e.target.value); setPage(0); }}
-                 style={{ ...input, width: 170 }} />
-          <input value={cardId} placeholder="Card id…"
-                 onChange={(e) => { setCardId(e.target.value); setPage(0); }}
-                 style={input} />
-          <input value={category} placeholder="Category…"
-                 onChange={(e) => { setCategory(e.target.value); setPage(0); }}
-                 style={input} />
-        </div>
+        <FilterBar active={active} onClear={clear}>
+          <TextFilter value={customer} onChange={filter(setCustomer)}
+                      placeholder="Cardholder name…" width={170} />
+          <TextFilter value={cardId} onChange={filter(setCardId)}
+                      placeholder="Card id…" />
+          <Select value={category} onChange={filter(setCategory)}
+                  label="All categories" options={categories} />
+          <Select value={hours} onChange={(v) => filter(setHours)(Number(v))}
+                  options={TABLE_WINDOWS} />
+        </FilterBar>
       }
     >
       {!data ? <Empty>Loading…</Empty>
-        : data.content.length === 0 ? <Empty>No transactions match.</Empty>
+        : data.content.length === 0 ? (
+          <Empty>
+            No transactions match these filters.
+            {active && <> <button onClick={clear} style={linkButton}>Clear them</button>.</>}
+          </Empty>
+        )
         : (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
@@ -80,17 +106,9 @@ export default function Transactions() {
               ))}
             </tbody>
           </table>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        paddingTop: 'var(--space-4)', fontSize: 'var(--text-xs)',
-                        color: 'var(--muted-fg)' }}>
-            <span>{data.totalElements.toLocaleString('en-ZA')} in the last 24 hours</span>
-            <span style={{ display: 'flex', gap: 6 }}>
-              <button style={btn} disabled={page === 0}
-                      onClick={() => setPage((p) => Math.max(0, p - 1))}>Previous</button>
-              <button style={btn} disabled={page >= data.totalPages - 1}
-                      onClick={() => setPage((p) => p + 1)}>Next</button>
-            </span>
-          </div>
+          <Pagination page={page} size={size} onPage={setPage} onSize={setSize}
+                      sizes={PAGE_SIZES} noun="transactions"
+                      totalElements={data.totalElements} totalPages={data.totalPages} />
         </div>
       )}
     </Card>
@@ -99,13 +117,7 @@ export default function Transactions() {
 
 const th = { padding: 'var(--row-pad)', fontWeight: 600 };
 const td = { padding: 'var(--row-pad)' };
-const input = {
-  height: 30, borderRadius: 'var(--radius-md)', border: '1px solid var(--input-border)',
-  background: 'var(--bg)', color: 'var(--fg)', fontSize: 'var(--text-xs)', padding: '0 8px',
-  width: 140,
-};
-const btn = {
-  height: 28, padding: '0 10px', borderRadius: 'var(--radius-md)',
-  border: '1px solid var(--input-border)', background: 'var(--bg)',
-  color: 'var(--fg)', fontSize: 'var(--text-xs)', cursor: 'pointer',
+const linkButton = {
+  background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+  color: 'var(--brand)', fontWeight: 600, fontSize: 'inherit',
 };

@@ -1,15 +1,32 @@
 import { Fragment, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { api, zar, shortTime, SEVERITIES } from '../api.js';
-import { Card, SeverityBadge, StatusBadge, Empty } from '../components/Primitives.jsx';
+import {
+  api, zar, shortTime, SEVERITIES, PAGE_SIZES, DEFAULT_PAGE_SIZE,
+  TABLE_WINDOWS, DEFAULT_WINDOW,
+} from '../api.js';
+import {
+  Card, SeverityBadge, StatusBadge, Empty, FilterBar, Pagination, Select,
+} from '../components/Primitives.jsx';
 
 export default function Alerts() {
   const [data, setData] = useState(null);
   const [severity, setSeverity] = useState('');
   const [status, setStatus] = useState('');
+  const [hours, setHours] = useState(DEFAULT_WINDOW);
   const [page, setPage] = useState(0);
+  const [size, setSize] = useState(DEFAULT_PAGE_SIZE);
   const [expanded, setExpanded] = useState(null);
   const [detail, setDetail] = useState(null);
+
+  // Every filter resets to the first page, and collapses whatever row was open:
+  // the expansion belongs to a row that is about to be replaced.
+  const filter = (set) => (value) => { set(value); setPage(0); setExpanded(null); };
+
+  const active = Boolean(severity || status) || hours !== DEFAULT_WINDOW;
+  const clear = () => {
+    setSeverity(''); setStatus(''); setHours(DEFAULT_WINDOW);
+    setPage(0); setExpanded(null);
+  };
 
   // `?focus=<id>` — where the dashboard's live feed lands.
   //
@@ -23,8 +40,9 @@ export default function Alerts() {
   const [focused, setFocused] = useState(null);
 
   useEffect(() => {
-    api.alerts({ severity, status, page, size: 25 }).then(setData).catch(() => setData(null));
-  }, [severity, status, page]);
+    api.alerts({ severity, status, hours, page, size })
+      .then(setData).catch(() => setData(null));
+  }, [severity, status, hours, page, size]);
 
   useEffect(() => {
     if (!focusId) { setFocused(null); return; }
@@ -51,7 +69,7 @@ export default function Alerts() {
 
   const disposition = async (id, next) => {
     await api.setAlertStatus(id, next);
-    setData(await api.alerts({ severity, status, page, size: 25 }));
+    setData(await api.alerts({ severity, status, hours, page, size }));
     if (expanded === id) setDetail(await api.alert(id));
   };
 
@@ -59,17 +77,24 @@ export default function Alerts() {
     <Card
       title="Alerts"
       action={
-        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-          <Select value={severity} onChange={setSeverity} label="All severities"
+        <FilterBar active={active} onClear={clear}>
+          <Select value={severity} onChange={filter(setSeverity)} label="All severities"
                   options={SEVERITIES} />
-          <Select value={status} onChange={setStatus} label="All statuses"
+          <Select value={status} onChange={filter(setStatus)} label="All statuses"
                   options={['OPEN', 'REVIEWING', 'CONFIRMED', 'CLEARED']} />
-        </div>
+          <Select value={hours} onChange={(v) => filter(setHours)(Number(v))}
+                  options={TABLE_WINDOWS} />
+        </FilterBar>
       }
       style={{ overflow: 'hidden' }}
     >
       {!data ? <Empty>Loading…</Empty>
-        : data.content.length === 0 ? <Empty>No alerts match these filters.</Empty>
+        : data.content.length === 0 ? (
+          <Empty>
+            No alerts match these filters.
+            {active && <> <button onClick={clear} style={linkButton}>Clear them</button>.</>}
+          </Empty>
+        )
         : (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
@@ -138,17 +163,9 @@ export default function Alerts() {
             </tbody>
           </table>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between',
-                        alignItems: 'center', paddingTop: 'var(--space-4)',
-                        fontSize: 'var(--text-xs)', color: 'var(--muted-fg)' }}>
-            <span>{data.totalElements.toLocaleString('en-ZA')} alerts</span>
-            <span style={{ display: 'flex', gap: 6 }}>
-              <button style={btn} disabled={page === 0}
-                      onClick={() => setPage((p) => Math.max(0, p - 1))}>Previous</button>
-              <button style={btn} disabled={page >= data.totalPages - 1}
-                      onClick={() => setPage((p) => p + 1)}>Next</button>
-            </span>
-          </div>
+          <Pagination page={page} size={size} onPage={setPage} onSize={setSize}
+                      sizes={PAGE_SIZES} noun="alerts"
+                      totalElements={data.totalElements} totalPages={data.totalPages} />
         </div>
       )}
     </Card>
@@ -223,14 +240,4 @@ function Td({ children, mono, muted }) {
     color: muted ? 'var(--muted-fg)' : undefined,
   }}>{children}</td>;
 }
-function Select({ value, onChange, label, options }) {
-  return (
-    <select value={value} onChange={(e) => onChange(e.target.value)}
-            style={{ height: 30, borderRadius: 'var(--radius-md)',
-                     border: '1px solid var(--input-border)', background: 'var(--bg)',
-                     color: 'var(--fg)', fontSize: 'var(--text-xs)', padding: '0 8px' }}>
-      <option value="">{label}</option>
-      {options.map((o) => <option key={o} value={o}>{o}</option>)}
-    </select>
-  );
-}
+

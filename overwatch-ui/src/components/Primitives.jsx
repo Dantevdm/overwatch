@@ -306,3 +306,202 @@ export function MethodBadge({ method }) {
     </span>
   );
 }
+
+/* ---- table filters and paging ------------------------------------------- */
+
+const controlHeight = 30;
+
+const controlStyle = {
+  height: controlHeight,
+  borderRadius: 'var(--radius-md)',
+  border: '1px solid var(--input-border)',
+  background: 'var(--bg)',
+  color: 'var(--fg)',
+  fontSize: 'var(--text-xs)',
+  padding: '0 8px',
+};
+
+/**
+ * A filter dropdown.
+ *
+ * `options` takes either strings or `{ value, label }`, because most of these
+ * are enum values that are their own label and a few are not — a window filter
+ * offers 24 hours as `24` and shows "Last 24 hours".
+ *
+ * The empty option is always first and always means "no filter", spelled out
+ * ("All severities") rather than left blank: a blank first option in a dropdown
+ * reads as a missing value, not as the absence of a constraint.
+ */
+export function Select({ value, onChange, label, options, width }) {
+  return (
+    <select aria-label={label} value={value}
+            onChange={(e) => onChange(e.target.value)}
+            style={{ ...controlStyle, width }}>
+      {label !== undefined && <option value="">{label}</option>}
+      {options.map((o) => {
+        const opt = typeof o === 'object' ? o : { value: o, label: o };
+        return <option key={opt.value} value={opt.value}>{opt.label}</option>;
+      })}
+    </select>
+  );
+}
+
+/** A free-text filter. Debouncing belongs to the caller, which owns the fetch. */
+export function TextFilter({ value, onChange, placeholder, width = 140, label }) {
+  return (
+    <input value={value} placeholder={placeholder} aria-label={label ?? placeholder}
+           onChange={(e) => onChange(e.target.value)}
+           style={{ ...controlStyle, width }} />
+  );
+}
+
+/**
+ * The row of filters above a table, with a way back out of them.
+ *
+ * The "Clear" button only appears once something is filtered. A permanently
+ * visible reset control is noise on an unfiltered table; an absent one is how
+ * someone ends up staring at an empty table having forgotten they typed a card
+ * id into it two screens ago.
+ */
+export function FilterBar({ children, onClear, active }) {
+  return (
+    <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center',
+                  flexWrap: 'wrap' }}>
+      {children}
+      {active && (
+        <button type="button" onClick={onClear}
+                style={{ ...controlStyle, cursor: 'pointer', color: 'var(--brand)',
+                         fontWeight: 600, border: '1px solid transparent',
+                         background: 'transparent' }}>
+          Clear filters
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Paging controls for a table, and the count they page through.
+ *
+ * Three things, left to right: how many rows there are and which of them you are
+ * looking at, how many to show at a time, and the way forwards and back. The
+ * range ("11–20 of 4 512") rather than only a page number, because a page number
+ * on its own is meaningless without knowing the page size, and the page size is
+ * the control immediately next to it.
+ *
+ * Page size is the caller's state, not this component's: changing it has to
+ * refetch, and the caller owns the fetch. What this does own is keeping the
+ * reader roughly where they were when the size changes — jumping from page 5 of
+ * 10-row pages back to page 5 of 50-row pages moves you 200 rows down the table
+ * for no reason, so the first visible row is preserved instead.
+ */
+export function Pagination({ page, size, totalElements, totalPages,
+                             onPage, onSize, noun = 'rows', sizes = [10, 25, 50] }) {
+  const total = totalElements ?? 0;
+  const pages = Math.max(1, totalPages ?? Math.ceil(total / size));
+  const first = total === 0 ? 0 : page * size + 1;
+  const last = Math.min(total, (page + 1) * size);
+
+  const changeSize = (next) => {
+    const n = Number(next);
+    onPage(Math.floor((page * size) / n));
+    onSize(n);
+  };
+
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  gap: 'var(--space-4)', flexWrap: 'wrap',
+                  paddingTop: 'var(--space-4)', marginTop: 'var(--space-2)',
+                  borderTop: '1px solid var(--border)',
+                  fontSize: 'var(--text-xs)', color: 'var(--muted-fg)' }}>
+      <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+        {total === 0
+          ? `No ${noun}`
+          : <>
+              {first.toLocaleString('en-ZA')}–{last.toLocaleString('en-ZA')} of{' '}
+              <strong style={{ color: 'var(--fg)' }}>{total.toLocaleString('en-ZA')}</strong> {noun}
+            </>}
+      </span>
+
+      <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          Rows
+          <select value={size} onChange={(e) => changeSize(e.target.value)}
+                  aria-label={`Rows per page, currently ${size}`}
+                  style={{ ...controlStyle, height: 26, padding: '0 4px' }}>
+            {sizes.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </label>
+
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <PageButton onClick={() => onPage(0)} disabled={page === 0} title="First page">
+            «
+          </PageButton>
+          <PageButton onClick={() => onPage(Math.max(0, page - 1))} disabled={page === 0}>
+            Previous
+          </PageButton>
+          <span style={{ fontVariantNumeric: 'tabular-nums', minWidth: 92,
+                         textAlign: 'center' }}>
+            Page {(page + 1).toLocaleString('en-ZA')} of {pages.toLocaleString('en-ZA')}
+          </span>
+          <PageButton onClick={() => onPage(page + 1)} disabled={page + 1 >= pages}>
+            Next
+          </PageButton>
+          <PageButton onClick={() => onPage(pages - 1)} disabled={page + 1 >= pages}
+                      title="Last page">
+            »
+          </PageButton>
+        </span>
+      </span>
+    </div>
+  );
+}
+
+function PageButton({ children, onClick, disabled, title }) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} title={title}
+            style={{
+              height: 26, padding: '0 9px', borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--input-border)',
+              background: 'var(--bg)', color: disabled ? 'var(--muted-fg)' : 'var(--fg)',
+              fontSize: 'var(--text-xs)',
+              cursor: disabled ? 'default' : 'pointer',
+              opacity: disabled ? 0.5 : 1,
+            }}>
+      {children}
+    </button>
+  );
+}
+
+/**
+ * Client-side paging for a list already in hand.
+ *
+ * Some tables here are pages of a query and some are a bounded list the server
+ * returned whole — a cardholder's alerts, capped at fifty by the API because a
+ * profile is a summary. Both should page the same way and look the same doing
+ * it, so this slices in the browser and hands back the same shape the server
+ * endpoints do.
+ *
+ * The page is clamped rather than reset when the list shrinks under it: a poll
+ * that returns two fewer rows should not throw the reader back to the top.
+ */
+export function useClientPaging(rows, initialSize = 10) {
+  const [page, setPage] = useState(0);
+  const [size, setSize] = useState(initialSize);
+
+  const all = rows ?? [];
+  const totalPages = Math.max(1, Math.ceil(all.length / size));
+  const safePage = Math.min(page, totalPages - 1);
+
+  return {
+    rows: all.slice(safePage * size, safePage * size + size),
+    props: {
+      page: safePage,
+      size,
+      onPage: setPage,
+      onSize: setSize,
+      totalElements: all.length,
+      totalPages,
+    },
+  };
+}
