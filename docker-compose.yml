@@ -71,7 +71,9 @@ services:
   # It is a window onto the broker for a demonstration, not an admin console, and
   # nothing here authenticates.
   redpanda-console:
-    image: redpandadata/console:v2.7.2
+    # Upstream, plus a git binary — see the Dockerfile for why that is needed.
+    build:
+      context: ./infra/observability/redpanda-console
     container_name: ow-redpanda-console
     depends_on:
       redpanda:

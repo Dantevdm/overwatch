@@ -26,6 +26,6 @@ console:
       enabled: true
       refreshInterval: 1m
       repository:
-        url: file:///repo
+        url: /repo
         branch: main
         baseDirectory: infra/observability/redpanda-console/topic-docs
