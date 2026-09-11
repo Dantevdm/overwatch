@@ -374,8 +374,11 @@ if [[ "$have_docker" -eq 1 ]]; then
   # quietly on a framework upgrade.
   check "Loki has the engine's logs" \
     loki_matches '{service="fraud-engine"}' 'fraud-engine'
+  # INFO, not ERROR. The parser is what is under test, and every service logs
+  # INFO on startup — whereas a stack that has just come up cleanly may never
+  # log an ERROR, which made this fail in CI for the one good reason.
   check "log levels are extracted as labels" \
-    loki_label_has level ERROR
+    loki_label_has level INFO
   check "every service is shipping" \
     loki_label_has service fraud-api
 else
