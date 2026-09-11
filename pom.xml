@@ -19,6 +19,14 @@
     <name>Overwatch</name>
     <description>Fraud rule engine service</description>
 
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://github.com/Dantevdm/overwatch/blob/main/LICENSE</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
     <modules>
         <module>services/common</module>
         <module>services/rule-engine</module>

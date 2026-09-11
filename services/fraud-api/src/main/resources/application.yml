@@ -1,6 +1,12 @@
 spring:
   application:
     name: fraud-api
+  lifecycle:
+    # The grace period for `shutdown: graceful` below. Long enough for a slow
+    # dashboard query to finish; short enough that a restart is a restart and
+    # not a wait. Compose gives the container 30s before SIGKILL, so this has
+    # to stay under that or graceful shutdown is a promise the runtime breaks.
+    timeout-per-shutdown-phase: 20s
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/overwatch}
     username: ${DB_USER:overwatch}
@@ -48,6 +54,11 @@ spring:
 
 server:
   port: 8080
+  # In-flight HTTP requests finish before the connector closes. Without this a
+  # `docker compose restart` answers a request that was mid-query with a reset
+  # connection, and the dashboard shows a failed panel for something that was
+  # working.
+  shutdown: graceful
 
 springdoc:
   swagger-ui:

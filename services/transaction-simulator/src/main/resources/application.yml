@@ -1,6 +1,12 @@
 spring:
   application:
     name: transaction-simulator
+  lifecycle:
+    # Stops the scheduled publisher and lets the producer flush what it has
+    # buffered. A killed producer loses its batch, and the published counter
+    # then disagrees with what is on the topic — which is exactly the gap the
+    # pipeline-health dashboard is meant to be measuring.
+    timeout-per-shutdown-phase: 20s
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:19092}
     producer:
@@ -11,6 +17,7 @@ spring:
 
 server:
   port: 8081
+  shutdown: graceful
 
 # Simulator behaviour. Tunable at runtime so the stream can be driven hard for a
 # load demonstration or slowed right down for a walkthrough.

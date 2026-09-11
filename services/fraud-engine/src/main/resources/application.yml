@@ -1,6 +1,14 @@
 spring:
   application:
     name: fraud-engine
+  lifecycle:
+    # This is the one that matters. On SIGTERM the listener container stops
+    # polling, finishes the record it is holding, and commits its offset before
+    # the context closes. Killed mid-record instead, the offset is never
+    # committed and the transaction is redelivered on the next start — which the
+    # processor is idempotent about, but "correct because a later safety net
+    # catches it" is a worse position than not dropping it in the first place.
+    timeout-per-shutdown-phase: 20s
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/overwatch}
     username: ${DB_USER:overwatch}
@@ -50,6 +58,7 @@ spring:
 
 server:
   port: 8082
+  shutdown: graceful
 
 overwatch:
   engine:
