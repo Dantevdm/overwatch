@@ -15,6 +15,9 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * The HTTP client for the BFF.
@@ -39,6 +42,9 @@ public final class Api {
      * short enough that a wedged service fails while you are still watching.
      */
     private static final Duration TIMEOUT = Duration.ofSeconds(10);
+
+    /** Reads the filename out of a Content-Disposition header, quoted or not. */
+    private static final Pattern FILENAME = Pattern.compile("filename=\"?([^\";]+)\"?");
 
     private static final ObjectMapper JSON = new ObjectMapper()
             .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
@@ -122,6 +128,69 @@ public final class Api {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             throw unreachable(e);
         }
+    }
+
+    /**
+     * Download a binary body, returning the bytes and the name the server chose.
+     *
+     * <p>Read into memory rather than streamed to the file. A report is tens of
+     * kilobytes and the alternative is a half-written file on disk when the API
+     * answers 500 — the failure a person is most likely to hit here is "the
+     * stack is not up", and it should leave nothing behind.
+     */
+    public Download download(String path, Map<String, ?> query) {
+        try {
+            // Overrides the client-wide `Accept: application/json`. Without this
+            // the API correctly answers 406 for a PDF, which is a confusing way
+            // to be told the client asked for the wrong thing.
+            HttpResponse<byte[]> response = http.send(
+                    request(path + queryString(query))
+                            .setHeader("Accept", "*/*")
+                            .GET().build(),
+                    HttpResponse.BodyHandlers.ofByteArray());
+            if (response.statusCode() / 100 != 2) {
+                throw new CliException("The API answered " + response.statusCode()
+                        + " for " + path + ".");
+            }
+            return new Download(response.body(), filenameFrom(response).orElse(null));
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            throw unreachable(e);
+        }
+    }
+
+    /**
+     * A downloaded file: its bytes, and the name the server suggested for it.
+     *
+     * <p>Copied in and out. A record holding an array hands every caller a
+     * writable reference to the same buffer, and the cost of not doing that here
+     * is two copies of a few tens of kilobytes — cheaper than the class of bug
+     * where one caller's edit shows up in another caller's file.
+     */
+    public record Download(byte[] bytes, String suggestedName) {
+
+        public Download {
+            bytes = bytes.clone();
+        }
+
+        @Override
+        public byte[] bytes() {
+            return bytes.clone();
+        }
+    }
+
+    /**
+     * The name from {@code Content-Disposition}, if the server sent one.
+     *
+     * <p>Taken from the server rather than invented here, because it carries the
+     * generation timestamp — two reports saved an hour apart should not be
+     * "report.pdf" and "report 2.pdf".
+     */
+    private static Optional<String> filenameFrom(HttpResponse<byte[]> response) {
+        return response.headers().firstValue("Content-Disposition")
+                .map(FILENAME::matcher)
+                .filter(Matcher::find)
+                .map(m -> m.group(1));
     }
 
     private HttpRequest.Builder request(String path) {

@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Overwatch \u2014 Fraud Rule Engine",
-    "description": "The Overwatch API.\n\nRun the folders top to bottom for a guided tour: check the stack is healthy, inject a fraud pattern, watch the alert appear, disposition it, then use replay to decide a threshold change.\n\n`baseUrl` defaults to the API on 8080 and `simulatorUrl` to the simulator on 8081. The simulator is internal in the default compose stack \u2014 start with `make up-tools` to reach it from the host.",
+    "description": "The Overwatch API.\n\nRun the folders top to bottom for a guided tour: check the stack is healthy, inject a fraud pattern, watch the alert appear, disposition it, then use replay to decide a threshold change \u2014 and take the whole window away as a file.\n\n`baseUrl` defaults to the API on 8080 and `simulatorUrl` to the simulator on 8081. The simulator is internal in the default compose stack \u2014 start with `make up-tools` to reach it from the host.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -749,6 +749,94 @@
                   "pm.test('200 OK', () => pm.response.to.have.status(200));",
                   "const s = pm.response.json();",
                   "pm.test('has severity breakdown', () => s.alertsBySeverity !== undefined);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6 \u00b7 Reports",
+      "item": [
+        {
+          "name": "Report \u2014 PDF",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/reports/fraud-summary.pdf?rangeMinutes=1440",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "reports",
+                "fraud-summary.pdf"
+              ],
+              "query": [
+                {
+                  "key": "rangeMinutes",
+                  "value": "1440"
+                }
+              ]
+            },
+            "description": "The dashboard as a document: headline figures, how the window moved, and whether each rule is earning its place. Charts are drawn as vectors, so the axis labels survive being printed.\n\nPostman previews the response inline; use Send and Download to keep the file."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('is a PDF', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/pdf'));",
+                  "// Magic bytes, not the header. A controller that fails and serialises",
+                  "// an error still answers with the content type it was declared with.",
+                  "pm.test('really is a PDF', () => pm.expect(pm.response.text().slice(0, 4)).to.eql('%PDF'));",
+                  "pm.test('names itself after the time it was generated', () =>",
+                  "  pm.expect(pm.response.headers.get('Content-Disposition'))",
+                  "    .to.match(/filename=\"overwatch-fraud-report-[\\d-]+\\.pdf\"/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Report \u2014 workbook",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/reports/fraud-summary.xlsx?rangeMinutes=1440",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "reports",
+                "fraud-summary.xlsx"
+              ],
+              "query": [
+                {
+                  "key": "rangeMinutes",
+                  "value": "1440"
+                }
+              ]
+            },
+            "description": "The same report as five sheets, with native Excel charts bound to the cells rather than pictures of charts \u2014 so a reader can re-sort a table or retarget a series and the chart follows."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('is a workbook', () => pm.expect(pm.response.headers.get('Content-Type'))",
+                  "  .to.include('spreadsheetml.sheet'));",
+                  "// An .xlsx is a zip, so it starts with a zip's local file header.",
+                  "pm.test('really is a workbook', () => pm.expect(pm.response.text().slice(0, 2)).to.eql('PK'));"
                 ]
               }
             }

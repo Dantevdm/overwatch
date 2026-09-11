@@ -9,6 +9,7 @@ import Simulator from './pages/Simulator.jsx';
 import Metrics from './pages/Metrics.jsx';
 import Streams from './pages/Streams.jsx';
 import ApiExplorer from './pages/ApiExplorer.jsx';
+import Reports from './pages/Reports.jsx';
 import ResetData from './components/ResetData.jsx';
 import ExternalTools from './components/ExternalTools.jsx';
 import Splash from './components/Splash.jsx';
@@ -17,7 +18,7 @@ import WelcomeTour from './components/WelcomeTour.jsx';
 import { Lockup } from './components/Brand.jsx';
 import {
   IconAlerts, IconApi, IconCardholders, IconDashboard, IconMetrics,
-  IconRules, IconSimulator, IconStreams, IconTransactions,
+  IconReports, IconRules, IconSimulator, IconStreams, IconTransactions,
 } from './components/Icons.jsx';
 import { api } from './api.js';
 
@@ -65,6 +66,7 @@ const NAV = [
     items: [
       { to: '/streams', label: 'Streams', icon: IconStreams },
       { to: '/metrics', label: 'Metrics', icon: IconMetrics },
+      { to: '/reports', label: 'Reports', icon: IconReports },
       // Deliberately not '/api': that prefix is the Vite proxy's, so a route
       // there is handed to the BFF and the browser gets the API's 404 instead
       // of this page.
@@ -317,6 +319,7 @@ function Shell({ analyst, onSignOut }) {
             <Route path="/metrics" element={<Metrics />} />
             <Route path="/streams" element={<Streams />} />
             <Route path="/simulator" element={<Simulator />} />
+            <Route path="/reports" element={<Reports />} />
             <Route path="/api-explorer" element={<ApiExplorer />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

@@ -127,10 +127,26 @@ internal_matches() { # internal_matches <service> <port> <path> <pattern>
   body=$(docker compose exec -T "$1" wget -qO- "http://localhost:$2$3" 2>/dev/null) || return 1
   grep -q "$4" <<<"$body"
 }
+# True when a download really is the format it claims. Checked by magic bytes
+# rather than by the Content-Type header: a controller that serialises an error
+# to JSON still sets the header it was declared with, so the header alone would
+# pass on exactly the failure worth catching.
+downloads_as() { # downloads_as <url> <magic>
+  local head
+  head=$(curl -fsS "$1" 2>/dev/null | head -c 4 | od -An -c | tr -d ' \n') || return 1
+  [[ "$head" == *"$2"* ]]
+}
+
 body_matches() { # body_matches <url> <pattern>
   local body
   body=$(curl -fsS "$1" 2>/dev/null) || return 1
   grep -q "$2" <<<"$body"
+}
+
+header_matches() { # header_matches <url> <pattern>
+  local headers
+  headers=$(curl -fsSI "$1" 2>/dev/null) || return 1
+  grep -qi "$2" <<<"$headers"
 }
 
 # True when the response does NOT carry a header matching the pattern. Used for
@@ -225,6 +241,19 @@ check "an over-long range is clamped to 7 days" \
 # reachable, which is the part that breaks.
 check "data reset endpoint is registered" \
   body_matches "$API_BASE/v3/api-docs" '/api/admin/reset'
+
+# ---------------------------------------------------------------------------
+section "Reports"
+# ---------------------------------------------------------------------------
+# PK\003\004 is a zip's local file header, which is what an .xlsx is; %PDF is
+# the PDF signature. Both are the first four bytes of the response.
+check "the workbook downloads as a real workbook" \
+  downloads_as "$API_BASE/api/reports/fraud-summary.xlsx?rangeMinutes=60" 'PK'
+check "the document downloads as a real PDF" \
+  downloads_as "$API_BASE/api/reports/fraud-summary.pdf?rangeMinutes=60" '%PDF'
+check "the report names itself after the time it was generated" \
+  header_matches "$API_BASE/api/reports/fraud-summary.pdf" \
+    'Content-Disposition:.*filename="overwatch-fraud-report-[0-9-]*\.pdf"'
 
 # ---------------------------------------------------------------------------
 section "Metrics endpoints (Micrometer -> Prometheus)"

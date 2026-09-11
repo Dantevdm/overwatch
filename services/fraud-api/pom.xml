@@ -77,6 +77,21 @@
             <groupId>com.overwatch</groupId>
             <artifactId>rule-engine</artifactId>
         </dependency>
+
+        <!-- Reports. POI carries a transitive commons-compress/xmlbeans tail and
+             is about 12MB on the image; it earns that by writing a workbook whose
+             charts are real Excel chart objects, so a reader can retarget a series
+             or change a chart type instead of looking at a picture of one. -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>${poi.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>${pdfbox.version}</version>
+        </dependency>
     </dependencies>
 
     <build>

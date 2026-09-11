@@ -2,6 +2,7 @@ package com.overwatch.cli;
 
 import com.overwatch.cli.command.AlertsCommand;
 import com.overwatch.cli.command.CardholderCommand;
+import com.overwatch.cli.command.ReportCommand;
 import com.overwatch.cli.command.ResetCommand;
 import com.overwatch.cli.command.RulesCommand;
 import com.overwatch.cli.command.SimCommand;
@@ -71,6 +72,7 @@ import picocli.CommandLine.Spec;
                 RulesCommand.class,
                 SimCommand.class,
                 SweepCommand.class,
+                ReportCommand.class,
                 ResetCommand.class,
         })
 public final class Ow implements Runnable {

@@ -440,6 +440,54 @@ curl -s localhost:3200/api/search/tag/service.name/values
 
 ---
 
+## Reports
+
+Everything on the reports screen exists elsewhere in the console. What does not
+exist elsewhere is a *file* — and a fraud lead's Monday ends with a document
+attached to an email. Without an export that ends in a screenshot of a browser
+tab, which loses the figures, the window they cover and the date it was taken.
+
+Two formats, because they answer different questions:
+
+- **A workbook** (`.xlsx`, five sheets) for someone who is going to work on it —
+  sort the rule table, filter to CRITICAL, paste a column into a model. So every
+  sheet is a real table with one record per row, figures are numbers carrying a
+  cell format rather than pre-formatted strings, and the charts are **native
+  Excel charts bound to those cells**: change a cell and the chart moves. A
+  picture of a chart would be a screenshot with extra steps.
+- **A document** (`.pdf`, three pages) for someone who is going to read it, in
+  the order the questions get asked: what happened, how it moved, which rules did
+  it. Charts are drawn as **vectors** rather than rasterised, so the axis labels
+  survive being printed or zoomed.
+
+Both are built by the API, not the browser. One definition of a report then
+serves the console, `curl`, Postman, the CLI and a scheduler, and the numbers
+come from the same service the dashboard reads — a client-side exporter would be
+a second implementation of every aggregate, drifting quietly from the first.
+
+```bash
+ow report pdf --range 7d          # or the button on the Reports screen
+curl -OJ "localhost:8080/api/reports/fraud-summary.xlsx?rangeMinutes=1440"
+```
+
+Three things in the output are deliberate and easy to get wrong:
+
+- **Alerts and volume get a chart each.** Volume runs two or three orders of
+  magnitude above the alert count, so on a shared axis the alert line lies flat
+  on zero. That is the chart most dashboards ship and the reason nobody trusts
+  it.
+- **A missing false-positive rate is blank, not zero.** A rule nobody has
+  reviewed reporting 0% reads as a perfect rule.
+- **The generation date is on every page**, because a figure with no date on it
+  is one somebody will quote six months from now.
+
+The dependencies are Apache POI and PDFBox — the reference implementation for
+each format on the JVM. There is no charting library: the report needs a bar
+chart and a line chart, and a general charting dependency would bring an AWT
+surface and a theming API to draw four bars.
+
+---
+
 ## Repository layout
 
 ```
@@ -621,6 +669,7 @@ make cli          # builds tools/overwatch-cli into a 2.9MB shaded jar
 | `ow rules list` / `state` / `weight` | The rule set, and retuning it live |
 | `ow sim start` / `pause` / `rate` / `inject` | Drive the traffic |
 | `ow sweep --rule HIGH_VALUE` | Where a threshold should sit, in one pass |
+| `ow report pdf` / `xlsx` | Save the window as a file, for a cron job or an email |
 | `ow reset` | Clear the store. Destructive, and it asks |
 
 Three decisions are worth calling out, because they are the difference between a
@@ -717,6 +766,7 @@ all: rule parameters are JSONB.
 | Prometheus + Grafana | The default pairing for Micrometer, and provisioning-as-code means no manual setup. |
 | Loki + Grafana Alloy | Logs beside the metrics, in the tool already open. Alloy rather than Promtail, which reached end of life in early 2025 — the config is the same three stages, so using the deprecated agent would mean shipping advice not to follow. |
 | Tempo | Traces beside the logs and metrics, sharing Grafana's datasource plumbing so a trace id in a log line is a link rather than a copy-paste. Micrometer's OpenTelemetry bridge means the instrumentation is the same API already producing the metrics. |
+| Apache POI + PDFBox | Report generation on the server, so one definition of a report serves the console, curl, Postman, the CLI and a scheduler. POI writes native Excel charts bound to the cells; PDFBox draws the PDF as vectors, with no charting library and no AWT. |
 | picocli | The CLI's subcommands, help and completion come from annotations on the classes that do the work, so the help cannot drift from the behaviour. It shades to a single 2.9MB jar with no runtime on the machine but a JVM. |
 
 Specialised financial stores (TigerBeetle and similar) were considered and set aside:
@@ -767,8 +817,8 @@ assertions and 19 orchestrator assertions. Those cover the UTC-to-SAST conversio
 that a late-night rule usually gets quietly wrong, midnight-wrapping windows,
 inclusive boundaries, malformed parameters degrading rather than throwing, shadow
 isolation under a crushing 0.90 weight, and a deliberately exploding rule failing
-to take the others down. Both Flyway migrations were applied to a real PostgreSQL
-16: 5 tables, 20 indexes, 7 seeded rules, 11 constraint assertions, cascade delete
+to take the others down. The Flyway migrations were applied to a real PostgreSQL
+16: 6 tables, 32 indexes, 7 seeded rules, 11 constraint assertions, cascade delete
 confirmed, and the velocity lookup checked against 60,000 rows — index-only scan,
 0.027 ms. The generator was run against the real rules: **0.00% false positives
 across 3,000 clean transactions**. Every entity column was checked against the
@@ -776,27 +826,38 @@ migration. The chart palette was measured rather than eyeballed, which caught tw
 severity colours 4.1 ΔE apart. Every JSX file was parsed with esbuild.
 
 **Also executed, on a machine with Docker and Maven.** `mvn clean verify` passes
-green across all five modules — 99 tests, plus JaCoCo, SpotBugs with find-sec-bugs,
+green across all six modules — 136 tests, plus JaCoCo, SpotBugs with find-sec-bugs,
 and PMD. The stack was brought up cold with `docker compose up --build`: Flyway
 migrated, Hibernate's `ddl-auto: validate` accepted every entity against the
 migrated schema, the simulator published, the engine consumed and scored, and
 alerts landed in PostgreSQL — so Spring wiring, JPA at runtime and Kafka
 serialisation are all exercised rather than assumed. `./scripts/smoke-test.sh`
-reports 35 of 35, and `./scripts/verify-dashboards.py` confirms all 45 panel
-queries return series against the live Prometheus. Every API endpoint was exercised against live data, including
-each optional filter, and all five dashboard screens were loaded in a browser
-against the running stack. The headline demonstration was confirmed end to end:
-`POST /api/simulator/inject/COMPOUND` produces a CRITICAL alert with five
-contributing rules and a score capped at 1.0, about a second later.
+reports 50 of 50, and `./scripts/verify-dashboards.py` confirms all 54 panel
+queries return data against the live Prometheus and Loki. Every API endpoint was
+exercised against live data, including each optional filter, and every dashboard
+screen was loaded in a browser against the running stack. The headline
+demonstration was confirmed end to end: `POST /api/simulator/inject/COMPOUND`
+produces a CRITICAL alert with five contributing rules and a score capped at 1.0,
+about a second later.
 
 The same verification was re-run after the repository restructure, since moving
 every module is exactly the kind of change that compiles and then fails to
-package: `mvn clean verify` green, all four images built, nine containers healthy,
-smoke test 35 of 35, dashboards 45 of 45.
+package: `mvn clean verify` green, all four images built, every container healthy,
+and both scripts green.
 
-**Still not executed.** There is no automated integration test through a real
-broker; the broker path is covered by the compose stack and the smoke test rather
-than by Testcontainers.
+**The broker path is now covered by a test rather than by a script.**
+`PipelineIT` starts a real Redpanda and a real PostgreSQL under Testcontainers,
+publishes raw JSON to `transactions`, and asserts that an alert is persisted,
+that it is announced on `fraud-alerts`, and that the outbox drains. It earned its
+place immediately by finding two faults the unit tests could not: declaring the
+outbox `ProducerFactory` makes Boot's Kafka auto-configuration back off entirely,
+and `buildProducerProperties()` ignores `KafkaConnectionDetails`, so the outbox
+producer dialled a broker that was not the one the rest of the context was using.
+
+Distributed tracing was verified the same way — not by the exporter starting, but
+by a trace in Tempo showing `transaction-simulator transactions send` as the
+parent of `fraud-engine transactions process` across the broker, and by a log
+line in Grafana rendering its trace id as a working link into that trace.
 
 ---
 
