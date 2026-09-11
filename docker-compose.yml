@@ -148,6 +148,7 @@ services:
     # setting in application.yml a promise nothing keeps.
     stop_grace_period: 30s
     environment:
+      OTLP_ENDPOINT: http://tempo:4317
       DB_URL: jdbc:postgresql://postgres:5432/overwatch
       DB_USER: overwatch
       DB_PASSWORD: overwatch
@@ -180,6 +181,7 @@ services:
     # setting in application.yml a promise nothing keeps.
     stop_grace_period: 30s
     environment:
+      OTLP_ENDPOINT: http://tempo:4317
       DB_URL: jdbc:postgresql://postgres:5432/overwatch
       DB_USER: overwatch
       DB_PASSWORD: overwatch
@@ -222,6 +224,7 @@ services:
     # setting in application.yml a promise nothing keeps.
     stop_grace_period: 30s
     environment:
+      OTLP_ENDPOINT: http://tempo:4317
       KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
     # No host binding. Prometheus scrapes transaction-simulator:8081 inside the
     # network.
@@ -339,6 +342,24 @@ services:
       start_period: 20s
     restart: unless-stopped
 
+  tempo:
+    image: grafana/tempo:2.6.1
+    container_name: ow-tempo
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    # No host binding, same as Loki: Grafana reads it over the compose network,
+    # and an unauthenticated trace store on a published port is a read of every
+    # request the stack has served.
+    volumes:
+      - ./infra/observability/tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+      - tempo-data:/var/tempo
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3200/ready | grep -q ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
   alloy:
     image: grafana/alloy:v1.5.1
     container_name: ow-alloy
@@ -396,6 +417,7 @@ services:
     depends_on:
       - prometheus
       - loki
+      - tempo
     restart: unless-stopped
 
 volumes:
@@ -404,4 +426,5 @@ volumes:
   prometheus-data:
   grafana-data:
   loki-data:
+  tempo-data:
   alloy-data:

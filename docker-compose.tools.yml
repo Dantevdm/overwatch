@@ -43,3 +43,9 @@ services:
       # targets it discovered, which is the first place to look when a service's
       # logs are missing from the dashboard.
       - "${OW_ALLOY_PORT:-12345}:12345"
+
+  tempo:
+    ports:
+      # Tempo's API, for querying a trace by id without Grafana:
+      #   curl -s localhost:3200/api/traces/<traceid>
+      - "${OW_TEMPO_PORT:-3200}:3200"

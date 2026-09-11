@@ -17,6 +17,13 @@ spring:
     timeout-per-shutdown-phase: 20s
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:19092}
+    template:
+      # Observation on the template, so the producer starts a span and writes
+      # the trace context into the record's headers. Without it the simulator's
+      # trace ends at the send and the engine's begins at the receive, and the
+      # two are unrelated — which is the same as having no distributed trace at
+      # all, just two local ones that happen to be about the same transaction.
+      observation-enabled: true
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
@@ -114,3 +121,42 @@ management:
     metrics:
       export:
         enabled: true
+
+  # Tracing. A transaction crosses the simulator, a broker and the engine, and
+  # three sets of metrics cannot show that as one thing.
+  #
+  # The exporter is pointed at Tempo by OTLP_ENDPOINT, which compose sets. Left
+  # unset — running a service outside the stack — the default below is where
+  # Tempo sits if you are running one; if you are not, the exporter fails to
+  # connect and says so rather than failing the service. Tracing is diagnostics,
+  # and diagnostics must not be able to take down the thing they diagnose.
+  otlp:
+    metrics:
+      export:
+        # Metrics stay on the Prometheus scrape. The OpenTelemetry starter
+        # brings micrometer-registry-otlp with it, which otherwise pushes
+        # metrics to an OTLP endpoint as well — two paths for the same numbers,
+        # and a stack trace every step interval when nothing is listening on
+        # the second one. Traces are pushed; metrics are pulled.
+        enabled: false
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          # management.opentelemetry.tracing.*, not management.otlp.tracing.*.
+          # Boot 4 moved these, and the old names are not an error — they are
+          # simply unbound, so the exporter keeps its default endpoint and the
+          # service starts, logs nothing, and sends no span anywhere. Worth
+          # knowing because it is indistinguishable from tracing being off.
+          endpoint: ${OTLP_ENDPOINT:http://localhost:4317}
+          # The default transport is http, which would mean posting to
+          # :4318/v1/traces. Tempo here listens on gRPC only — one open port
+          # rather than two, and the exporter picks the one that is there.
+          transport: grpc
+  tracing:
+    sampling:
+      # Every trace. Not a production setting — at real volume this is the line
+      # to lower, which is why it is a property and not a constant — but at a
+      # few transactions a second the storage is trivial, and a sampled-out
+      # trace is always the one the reviewer asked about.
+      probability: 1.0

@@ -283,6 +283,22 @@
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
+
+        <!-- Tracing, for the same reason: a request that crosses three services
+             and a broker cannot be explained by three separate sets of metrics.
+
+             The starter, not micrometer-tracing-bridge-otel and
+             opentelemetry-exporter-otlp on their own. Those two were the whole
+             dependency in Boot 3 and are not enough in Boot 4, which
+             modularised auto-configuration: both libraries loaded, no
+             TracingAutoConfiguration came with them, and the result was a stack
+             that started cleanly, logged nothing, and sent Tempo not one span.
+             The same change is why Kafka and Flyway need their own starters
+             here. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-opentelemetry</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

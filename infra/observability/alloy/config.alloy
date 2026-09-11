@@ -84,14 +84,27 @@ loki.process "spring_boot" {
 		max_lines = 200
 	}
 
-	// Spring Boot's default console pattern, as it actually appears:
+	// Spring Boot's console pattern, as it actually appears:
 	//
 	//   2026-09-11T07:00:34.319Z  INFO 1 --- [fraud-engine] [ntainer#0-0-C-1] c.o.e.p.TransactionProcessor : Alert raised
+	//
+	// With tracing on, Boot adds a correlation bracket after the thread:
+	//
+	//   ... --- [fraud-engine] [ntainer#0-0-C-1] [<32 hex>-<16 hex>] c.o.e.p.X : …
+	//
+	// and on a thread with no active span it is there but blank — a bracket of
+	// spaces, padded to the same width so the columns still line up. So the
+	// group is optional AND its contents are optional. It has to be both: a
+	// regex that required the bracket would stop matching the moment tracing
+	// was turned off, one that ignored it would stop matching the moment it was
+	// turned on, and one that required hex inside it would drop every line
+	// logged outside a request. All three failures are silent — the level label
+	// simply disappears and every line becomes UNKNOWN.
 	//
 	// Named groups rather than positional, so a pattern change breaks loudly in
 	// one place instead of quietly relabelling every log line.
 	stage.regex {
-		expression = "^(?P<timestamp>\\S+)\\s+(?P<level>[A-Z]+)\\s+(?P<pid>\\d+)\\s+---\\s+\\[(?P<app>[^\\]]*)\\]\\s+\\[(?P<thread>[^\\]]*)\\]\\s+(?P<logger>\\S+)\\s+:\\s*(?P<message>(?s:.*))$"
+		expression = "^(?P<timestamp>\\S+)\\s+(?P<level>[A-Z]+)\\s+(?P<pid>\\d+)\\s+---\\s+\\[(?P<app>[^\\]]*)\\]\\s+\\[(?P<thread>[^\\]]*)\\]\\s+(\\[\\s*(?P<trace_id>[a-f0-9]*)-?(?P<span_id>[a-f0-9]*)\\s*\\]\\s+)?(?P<logger>\\S+)\\s+:\\s*(?P<message>(?s:.*))$"
 	}
 
 	// A level that is missing is a level, not a blank.

@@ -1,0 +1,44 @@
+# Tempo, single-binary, filesystem-backed — the same shape as the Loki beside it.
+#
+# There is no sampling decision here: sampling is the application's call, set by
+# management.tracing.sampling.probability, because the service knows which
+# requests matter and a collector does not.
+server:
+  http_listen_port: 3200
+  log_level: warn
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        # gRPC only. The services use the OTLP gRPC exporter, and leaving the
+        # HTTP receiver on as well would be a second open port that nothing
+        # sends to.
+        grpc:
+          endpoint: 0.0.0.0:4317
+
+ingester:
+  # How long a trace is held open before it is flushed. A trace here spans the
+  # simulator's publish, the broker, and the engine's evaluation -- under a
+  # second in total -- so five seconds is generous and keeps a completed trace
+  # searchable almost immediately, which matters when the person searching is
+  # demonstrating it.
+  max_block_duration: 5m
+  trace_idle_period: 5s
+
+compactor:
+  compaction:
+    # Same retention as Loki, for the same reason: this is a demo stack that
+    # gets left running, and nobody debugging a demo needs last week.
+    block_retention: 72h
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks
+
+usage_report:
+  reporting_enabled: false

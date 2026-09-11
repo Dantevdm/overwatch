@@ -384,6 +384,62 @@ curl -sG localhost:3100/loki/api/v1/query_range \
 
 ---
 
+## Traces
+
+Metrics say something slowed down. Logs say what one service was doing. Neither
+answers "where did *this* transaction go", because the answer spans three
+services and a broker, and each of them logs its own half of the story with no
+shared identifier between them.
+
+**Tempo** stores the traces; the services produce them through Micrometer's
+OpenTelemetry bridge. The span that matters is the one across the broker:
+
+```
+transaction-simulator   transactions send      SPAN_KIND_PRODUCER
+  fraud-engine          transactions process   SPAN_KIND_CONSUMER
+```
+
+That parent-child link is the whole point, and it does not come for free. A
+Kafka publish is not a call — the producer returns long before anyone consumes,
+so there is no call stack to walk. It works because `observation-enabled` is set
+on both the template and the listener, which writes the trace context into the
+record's headers on the way out and reads it back on the way in. Without those
+two flags you get two unrelated traces and no evidence that they are the same
+transaction.
+
+Three things had to line up, and each failed silently on its own:
+
+- **Boot 4 no longer auto-configures what is merely on the classpath.** The
+  tracing bridge and the OTLP exporter as raw dependencies produce zero spans and
+  zero complaints. `spring-boot-starter-opentelemetry` is what brings the
+  auto-configuration.
+- **The OTLP properties moved.** Boot 3's `management.otlp.tracing.*` is now
+  `management.opentelemetry.tracing.export.otlp.*`. The old names bind to
+  nothing, which is not an error — the exporter simply keeps its defaults.
+- **The default transport is HTTP.** Boot exports to `:4318` unless told
+  otherwise; this Tempo listens on gRPC `:4317`, so `transport: grpc` is not
+  decoration.
+
+Sampling is `1.0`. A demo that drops nine traces in ten would have you
+explaining sampling instead of the pipeline, and the volume here is a laptop's
+worth.
+
+Logs and traces join up in both directions. Boot 4 puts `[traceId-spanId]` in
+every log line, and the Loki datasource turns that bracket into a **View trace**
+link via a derived field; the Tempo datasource carries `tracesToLogsV2` back the
+other way, so a span opens the log lines that span produced. Click either way
+and the other tool is already filtered.
+
+Like Loki, Tempo runs unauthenticated and is **not** published to the host by
+the base stack. `docker-compose.tools.yml` exposes it on 3200 for direct API
+access.
+
+```bash
+curl -s localhost:3200/api/search/tag/service.name/values
+```
+
+---
+
 ## Repository layout
 
 ```
@@ -660,6 +716,7 @@ all: rule parameters are JSONB.
 | React 18 + Vite | Fast dev loop, no framework overhead for what is a dashboard. |
 | Prometheus + Grafana | The default pairing for Micrometer, and provisioning-as-code means no manual setup. |
 | Loki + Grafana Alloy | Logs beside the metrics, in the tool already open. Alloy rather than Promtail, which reached end of life in early 2025 — the config is the same three stages, so using the deprecated agent would mean shipping advice not to follow. |
+| Tempo | Traces beside the logs and metrics, sharing Grafana's datasource plumbing so a trace id in a log line is a link rather than a copy-paste. Micrometer's OpenTelemetry bridge means the instrumentation is the same API already producing the metrics. |
 | picocli | The CLI's subcommands, help and completion come from annotations on the classes that do the work, so the help cannot drift from the behaviour. It shades to a single 2.9MB jar with no runtime on the machine but a JVM. |
 
 Specialised financial stores (TigerBeetle and similar) were considered and set aside:

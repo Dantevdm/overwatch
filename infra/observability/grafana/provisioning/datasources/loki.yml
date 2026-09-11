@@ -18,3 +18,21 @@ datasources:
       # busy stack will happily try to render a hundred thousand lines and hang
       # the browser tab, which reads as "the dashboard is broken".
       maxLines: 2000
+      # From a log line to its trace.
+      #
+      # This is the payoff for the tracing work: an ERROR in the log panel
+      # carries the trace id of the request that produced it, and this turns
+      # that id into a link. Without it a reader has the id and has to go and
+      # paste it into another tab, which is the same as not having it.
+      #
+      # The pattern matches the correlation field Spring Boot 4 adds to its
+      # console pattern once tracing is on — [traceId-spanId], 32 hex and 16 —
+      # and captures the trace. Anchored on those lengths so it cannot match
+      # the padded blank bracket a line logged outside a span carries.
+      derivedFields:
+        - name: TraceID
+          matcherType: regex
+          matcherRegex: '\[([a-f0-9]{32})-[a-f0-9]{16}\]'
+          url: '$${__value.raw}'
+          datasourceUid: tempo
+          urlDisplayLabel: 'View trace'
