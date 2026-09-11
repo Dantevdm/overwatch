@@ -1,6 +1,18 @@
 spring:
   application:
     name: fraud-engine
+  task:
+    scheduling:
+      shutdown:
+        # The outbox poller and the rule refresher both run here, and both hold
+        # a database transaction while they work. Without this the scheduler is
+        # shut down without waiting, so a SIGTERM lands mid-poll and the
+        # connection is closed under an open transaction -- which surfaces as
+        # "An I/O error occurred while sending to the backend" and a rolled-back
+        # batch. Nothing is lost, because an unpublished row is retried, but a
+        # clean stop should not need the retry to save it.
+        await-termination: true
+        await-termination-period: 20s
   lifecycle:
     # This is the one that matters. On SIGTERM the listener container stops
     # polling, finishes the record it is holding, and commits its offset before
@@ -53,8 +65,14 @@ spring:
         spring.json.use.type.headers: false
         spring.json.value.default.type: com.overwatch.common.domain.Transaction
     producer:
+      # Both serialisers are overridden in OutboxKafkaConfig, which is the only
+      # producer this service has: everything it publishes comes out of the
+      # outbox as stored JSON text, and handing text to a JSON serialiser would
+      # publish a quoted string containing the document. Every other producer
+      # property set here — bootstrap servers, acks, anything added later — is
+      # still inherited by that factory.
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
 
 server:
   port: 8082
@@ -65,6 +83,20 @@ overwatch:
     # How often the engine re-reads rule configuration from the database. Rules are
     # data, so a threshold change takes effect within this window — no redeploy.
     rule-refresh-seconds: 30
+  outbox:
+    # How long an alert waits between committing and reaching the topic. This is
+    # the latency the outbox buys its atomicity with, and it is the number to
+    # move if that trade ever looks wrong: lower it and the poller spends more
+    # time asking an empty table, raise it and downstream hears later.
+    poll-millis: 200
+    # Rows per poll. At 200ms this drains 500/s, comfortably above anything the
+    # simulator produces, so the backlog gauge stays at zero unless something is
+    # actually wrong -- which is what makes it worth alerting on.
+    batch-size: 100
+    # How long a published row is kept before pruning. Long enough to answer
+    # "was this alert published, and when" during a demo; short enough that the
+    # outbox stays a queue rather than becoming a second copy of every alert.
+    retention-minutes: 60
 # Actuator: health for compose orchestration, prometheus for scraping.
 # Only what is needed is exposed — this is not "expose: *".
 management:

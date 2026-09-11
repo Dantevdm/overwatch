@@ -76,6 +76,43 @@
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-database-postgresql</artifactId>
         </dependency>
+
+        <!-- Integration testing against the real thing.
+
+             The pipeline's interesting failures are all at the edges the unit
+             tests mock away: a serialiser that produces something the consumer
+             cannot read, a migration that does not apply, an outbox row that is
+             written and never drained. None of those can fail in a test that
+             mocks KafkaTemplate, which is why this module runs one test through
+             an actual broker and an actual Postgres. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- Redpanda, not Kafka: the same broker the compose stack runs, so
+                 the test exercises the thing that is deployed rather than a
+                 close relative of it. -->
+            <groupId>org.testcontainers</groupId>
+            <artifactId>redpanda</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.awaitility</groupId>
+            <artifactId>awaitility</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

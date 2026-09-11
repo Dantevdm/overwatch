@@ -44,6 +44,11 @@
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <springdoc.version>3.1.1</springdoc.version>
+        <!-- Not managed by the Spring Boot 4 parent, so it is pinned here. 1.x
+             rather than 2.x: 2.0 reorganised the module coordinates, and the
+             Redpanda module this project uses is not published under the new
+             ones yet. -->
+        <testcontainers.version>1.21.4</testcontainers.version>
 
         <!-- Quality tooling -->
         <!-- 0.8.13 is the first release that reads Java 25 bytecode. 0.8.12
@@ -77,6 +82,13 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>${testcontainers.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>com.overwatch</groupId>
                 <artifactId>common</artifactId>
@@ -161,6 +173,28 @@
                                 <exclude>**/dto/**</exclude>
                             </excludes>
                         </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Integration tests: *IT classes, run at verify, against real
+                 infrastructure in containers.
+
+                 Separate from surefire on purpose. `mvn test` stays a fast,
+                 hermetic loop a developer runs on every save; anything that
+                 needs a broker and a database costs tens of seconds and belongs
+                 behind the gate rather than in front of it. Failsafe also runs
+                 post-integration-test even when a test fails, so a container is
+                 torn down rather than left behind. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
                     </execution>
                 </executions>
             </plugin>

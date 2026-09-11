@@ -13,15 +13,20 @@ import com.overwatch.engine.persistence.repository.ShadowRuleHitRepository;
 import com.overwatch.engine.persistence.repository.TransactionRepository;
 import com.overwatch.engine.rule.RuleEngine;
 import com.overwatch.engine.rule.TransactionHistory;
+import com.overwatch.common.persistence.OutboxEntity;
+import com.overwatch.engine.persistence.repository.OutboxRepository;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.mockito.ArgumentCaptor;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import org.mockito.InOrder;
-import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.kafka.support.SendResult;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -63,29 +68,25 @@ class TransactionProcessorTest {
     private FraudAlertRepository alerts;
     private ShadowRuleHitRepository shadowHits;
     private RuleEngine engine;
-    private KafkaTemplate<String, Object> kafka;
+    private OutboxRepository outbox;
     private MeterRegistry meters;
     private TransactionProcessor processor;
 
-    @SuppressWarnings("unchecked")
     @BeforeEach
     void setUp() {
         transactions = mock(TransactionRepository.class);
         alerts = mock(FraudAlertRepository.class);
         shadowHits = mock(ShadowRuleHitRepository.class);
         engine = mock(RuleEngine.class);
-        kafka = mock(KafkaTemplate.class);
+        outbox = mock(OutboxRepository.class);
         meters = new SimpleMeterRegistry();
 
         RuleConfigProvider config = mock(RuleConfigProvider.class);
         when(config.active()).thenReturn(List.of());
 
-        // Succeeds by default; the failure path overrides this.
-        when(kafka.send(anyString(), anyString(), any()))
-                .thenReturn(CompletableFuture.completedFuture(mock(SendResult.class)));
-
         processor = new TransactionProcessor(transactions, alerts, shadowHits, engine,
-                config, mock(TransactionHistory.class), kafka, meters);
+                config, mock(TransactionHistory.class), outbox, new ObjectMapper(),
+                meters);
     }
 
     // ---- fixtures ---------------------------------------------------------
@@ -150,7 +151,7 @@ class TransactionProcessorTest {
         assertThat(processor.process(t)).isPresent();
 
         verify(alerts, never()).save(any());
-        verify(kafka, never()).send(anyString(), anyString(), any());
+        verify(outbox, never()).save(any());
         // Still counted as processed, and its score still recorded — a quiet
         // transaction is data, not an absence of data.
         assertThat(counter("transactions.processed")).isEqualTo(1.0);
@@ -182,7 +183,7 @@ class TransactionProcessorTest {
 
         verify(shadowHits).save(any(ShadowRuleHitEntity.class));
         verify(alerts, never()).save(any());
-        verify(kafka, never()).send(anyString(), anyString(), any());
+        verify(outbox, never()).save(any());
         assertThat(counter("fraud.shadow.hits", "rule", "AMOUNT_DEVIATION")).isEqualTo(1.0);
     }
 
@@ -237,7 +238,7 @@ class TransactionProcessorTest {
         verify(engine, never()).evaluate(any(), any(), any());
         verify(alerts, never()).save(any());
         verify(shadowHits, never()).save(any());
-        verify(kafka, never()).send(anyString(), anyString(), any());
+        verify(outbox, never()).save(any());
         assertThat(counter("transactions.redelivered")).isEqualTo(1.0);
     }
 
@@ -268,29 +269,43 @@ class TransactionProcessorTest {
     // ---- publishing -------------------------------------------------------
 
     @Test
-    @DisplayName("a failed publish is counted and does not lose the detection")
-    void failedPublishKeepsTheDetection() {
-        Transaction t = txn();
-        engineReturns(t, scoring("HIGH_VALUE", 1, 0.40));
-        when(kafka.send(anyString(), anyString(), any()))
-                .thenReturn(CompletableFuture.failedFuture(new IllegalStateException("broker down")));
-
-        // Must not propagate: the alert is already durable in Postgres.
-        assertThat(processor.process(t)).isPresent();
-
-        verify(alerts).save(any());
-        assertThat(counter("fraud.alerts.publish.failed")).isEqualTo(1.0);
-    }
-
-    @Test
-    @DisplayName("the alert is keyed by transaction id, so one card movement stays on one partition")
-    void publishIsKeyedByTransaction() {
+    @DisplayName("the announcement is a row, written in the same transaction as the alert")
+    void alertIsEnqueuedRatherThanSent() {
         Transaction t = txn();
         engineReturns(t, scoring("HIGH_VALUE", 1, 0.40));
 
         processor.process(t);
 
-        verify(kafka).send(eq("fraud-alerts"), eq(t.id().toString()), any());
+        // The point of the outbox: nothing leaves this method. If the caller's
+        // transaction rolls back after this line, the row rolls back with the
+        // alert -- which a kafka.send() inside the same transaction could not do,
+        // because the record was already in the producer's buffer.
+        ArgumentCaptor<OutboxEntity> captor = ArgumentCaptor.forClass(OutboxEntity.class);
+        verify(outbox).save(captor.capture());
+
+        OutboxEntity queued = captor.getValue();
+        assertThat(queued.getTopic()).isEqualTo("fraud-alerts");
+        // Keyed by transaction, so one card movement stays on one partition.
+        assertThat(queued.getMessageKey()).isEqualTo(t.id().toString());
+    }
+
+    @Test
+    @DisplayName("the queued payload is the alert, serialised, not a description of it")
+    void queuedPayloadIsTheAlert() {
+        Transaction t = txn();
+        engineReturns(t, scoring("HIGH_VALUE", 1, 0.40));
+
+        processor.process(t);
+
+        ArgumentCaptor<OutboxEntity> captor = ArgumentCaptor.forClass(OutboxEntity.class);
+        verify(outbox).save(captor.capture());
+
+        // Parsed rather than string-matched: this asserts a consumer can read
+        // what was stored, which is the only property that matters about it.
+        JsonNode payload = new ObjectMapper().readTree(captor.getValue().getPayload());
+        assertThat(payload.get("transactionId").asText()).isEqualTo(t.id().toString());
+        assertThat(payload.get("severity").asText()).isEqualTo("LOW");
+        assertThat(payload.get("riskScore").asDouble()).isEqualTo(0.40);
     }
 
     // ---- metrics ----------------------------------------------------------

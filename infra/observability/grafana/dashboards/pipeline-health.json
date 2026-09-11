@@ -1,6 +1,6 @@
 {
   "uid": "overwatch-pipeline",
-  "title": "Overwatch \u2014 Pipeline Health",
+  "title": "Overwatch — Pipeline Health",
   "description": "Is the pipeline keeping up, and is anything falling over. Read the top row first: it answers both questions in five numbers.",
   "tags": [
     "overwatch",
@@ -117,7 +117,7 @@
     {
       "type": "stat",
       "title": "Consumer lag",
-      "description": "Records sitting on the topic that the engine has not consumed yet \u2014 the one number that says whether detection is keeping pace with traffic. Zero means the engine is at the head of the topic. A figure that climbs steadily means transactions are arriving faster than they can be evaluated, and every alert is getting later. Note that this reads \"No data\" for the first half-minute after an engine restart: the per-partition lag gauge is only created once the consumer has been assigned a partition and completed a fetch, which is later than the container reports itself healthy.",
+      "description": "Records sitting on the topic that the engine has not consumed yet — the one number that says whether detection is keeping pace with traffic. Zero means the engine is at the head of the topic. A figure that climbs steadily means transactions are arriving faster than they can be evaluated, and every alert is getting later. Note that this reads \"No data\" for the first half-minute after an engine restart: the per-partition lag gauge is only created once the consumer has been assigned a partition and completed a fetch, which is later than the container reports itself healthy.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -166,8 +166,8 @@
     },
     {
       "type": "stat",
-      "title": "Published \u2192 processed gap",
-      "description": "Transactions published to the stream over the dashboard's time range, minus those the engine processed in the same range. A handful either way is scrape skew and window edges \u2014 the two services are sampled at slightly different instants, and the engine may still be draining work published just before the window opened.\n\nDeliberately increase() over the range rather than the difference of the two raw counters. The raw form read -808139 once: the simulator had been rebuilt and restarted, so its in-process counter began again at zero while the engine's kept climbing, and subtracting two lifetime totals that no longer share a lifetime is meaningless. increase() understands a counter reset and only ever measures forward motion inside the window, so a restart of either service, or a metrics clear that removes both, leaves this panel honest.\n\nclamp_min at zero because the quantity is a count of transactions in flight, and there is no such thing as minus eight hundred thousand of them. A number that grows without coming back is real backlog or real loss.",
+      "title": "Published → processed gap",
+      "description": "Transactions published to the stream over the dashboard's time range, minus those the engine processed in the same range. A handful either way is scrape skew and window edges — the two services are sampled at slightly different instants, and the engine may still be draining work published just before the window opened.\n\nDeliberately increase() over the range rather than the difference of the two raw counters. The raw form read -808139 once: the simulator had been rebuilt and restarted, so its in-process counter began again at zero while the engine's kept climbing, and subtracting two lifetime totals that no longer share a lifetime is meaningless. increase() understands a counter reset and only ever measures forward motion inside the window, so a restart of either service, or a metrics clear that removes both, leaves this panel honest.\n\nclamp_min at zero because the quantity is a count of transactions in flight, and there is no such thing as minus eight hundred thousand of them. A number that grows without coming back is real backlog or real loss.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -391,7 +391,7 @@
     {
       "type": "timeseries",
       "title": "Consumer lag over time",
-      "description": "Lag as a shape rather than a single number. A sawtooth is normal \u2014 it builds between polls and drains. A staircase that only goes up is the engine losing ground. Note that this reads \"No data\" for the first half-minute after an engine restart: the per-partition lag gauge is only created once the consumer has been assigned a partition and completed a fetch, which is later than the container reports itself healthy.",
+      "description": "Lag as a shape rather than a single number. A sawtooth is normal — it builds between polls and drains. A staircase that only goes up is the engine losing ground. Note that this reads \"No data\" for the first half-minute after an engine restart: the per-partition lag gauge is only created once the consumer has been assigned a partition and completed a fetch, which is later than the container reports itself healthy.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -449,12 +449,173 @@
     },
     {
       "type": "row",
-      "title": "How fast is detection?",
+      "title": "Is every alert being announced?",
+      "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
         "y": 13
+      },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Announcements queued",
+      "description": "Alerts written to the outbox that are not yet on the fraud-alerts topic. The engine no longer sends to Kafka inside the transaction that saves an alert; it writes a row, and a poller drains it every 200ms. So this should sit at zero and flick up briefly: a figure that stays above zero means the poller is not keeping up or the broker is refusing writes, and every downstream consumer is hearing about fraud late. It reads zero rather than \"No data\" on a quiet pipeline, because the gauge is registered at startup.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 14
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 50
+              },
+              {
+                "color": "red",
+                "value": 500
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "expr": "sum(outbox_pending)",
+          "legendFormat": "queued",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Oldest announcement waiting",
+      "description": "How long the message at the front of the outbox queue has been waiting. Depth alone cannot tell a busy second from a stuck poller — a hundred messages published within a second of arriving is healthy, and one message sitting for ten minutes is not. This is the panel that distinguishes them.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 14
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 5
+              },
+              {
+                "color": "red",
+                "value": 60
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "expr": "max(outbox_oldest_pending_seconds)",
+          "legendFormat": "seconds",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Announcements published vs failed",
+      "description": "The drain rate of the outbox, against the rate at which sends are rejected. A failed send is not a lost alert — the row stays unpublished and the next poll retries it — so what this panel measures is how hard the poller is having to work, not how much has been lost. Sustained failures with a flat publish rate means the broker is unreachable and the queue above is growing.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "decimals": 2,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(outbox_published_total[5m]))",
+          "legendFormat": "published/s"
+        },
+        {
+          "expr": "sum(rate(outbox_publish_failed_total[5m]))",
+          "legendFormat": "send failures/s"
+        },
+        {
+          "expr": "sum(rate(fraud_alerts_enqueue_failed_total[5m]))",
+          "legendFormat": "never queued/s"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "How fast is detection?",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 22
       },
       "collapsed": false,
       "panels": []
@@ -471,7 +632,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 14
+        "y": 23
       },
       "fieldConfig": {
         "defaults": {
@@ -564,7 +725,7 @@
     {
       "type": "heatmap",
       "title": "Detection latency distribution",
-      "description": "The same histogram without the quantiles: every bucket, coloured by how many evaluations landed in it. This shows shape that percentile lines hide \u2014 two clusters of latency look identical to a p95 and very different here.",
+      "description": "The same histogram without the quantiles: every bucket, coloured by how many evaluations landed in it. This shows shape that percentile lines hide — two clusters of latency look identical to a p95 and very different here.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -573,7 +734,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 14
+        "y": 23
       },
       "options": {
         "calculate": false,
@@ -622,7 +783,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 22
+        "y": 31
       },
       "collapsed": false,
       "panels": []
@@ -630,7 +791,7 @@
     {
       "type": "timeseries",
       "title": "Heap used",
-      "description": "Heap as a fraction of the maximum the JVM will allow itself, rather than raw bytes \u2014 400MB means nothing without knowing the ceiling, and the ceiling is a container limit nobody remembers. A sawtooth is healthy garbage collection. A rising floor is a leak.",
+      "description": "Heap as a fraction of the maximum the JVM will allow itself, rather than raw bytes — 400MB means nothing without knowing the ceiling, and the ceiling is a container limit nobody remembers. A sawtooth is healthy garbage collection. A rising floor is a leak.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -639,7 +800,7 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 23
+        "y": 32
       },
       "fieldConfig": {
         "defaults": {
@@ -686,7 +847,7 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 23
+        "y": 32
       },
       "fieldConfig": {
         "defaults": {
@@ -732,7 +893,7 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 23
+        "y": 32
       },
       "fieldConfig": {
         "defaults": {
@@ -778,7 +939,7 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 30
+        "y": 39
       },
       "fieldConfig": {
         "defaults": {
@@ -824,7 +985,7 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 30
+        "y": 39
       },
       "fieldConfig": {
         "defaults": {
@@ -870,7 +1031,7 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 30
+        "y": 39
       },
       "fieldConfig": {
         "defaults": {
@@ -933,7 +1094,7 @@
     {
       "type": "stat",
       "title": "Uptime",
-      "description": "How long each service has been running. A value that keeps resetting is a container in a crash loop \u2014 which the \"Services up\" tile will not catch if it restarts fast enough between scrapes.",
+      "description": "How long each service has been running. A value that keeps resetting is a container in a crash loop — which the \"Services up\" tile will not catch if it restarts fast enough between scrapes.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -942,7 +1103,7 @@
         "h": 4,
         "w": 24,
         "x": 0,
-        "y": 37
+        "y": 46
       },
       "fieldConfig": {
         "defaults": {

@@ -12,9 +12,10 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -32,6 +33,13 @@ import java.util.UUID;
  * <p>The whole thing runs in one transaction. An alert without its rule hits is
  * worse than no alert, because it tells an analyst something is wrong without
  * saying what.
+ *
+ * <p>Nothing here talks to Kafka. Announcing an alert is a row in the outbox,
+ * written in this same transaction and published afterwards by
+ * {@link OutboxPublisher}. That is the fix for the dual write this pipeline used
+ * to perform: a send issued inside a transaction that then rolled back left
+ * downstream holding a notification for an alert that does not exist, and no
+ * amount of error handling around the send could take it back.
  */
 @Service
 public class TransactionProcessor {
@@ -44,7 +52,8 @@ public class TransactionProcessor {
     private final RuleEngine engine;
     private final RuleConfigProvider config;
     private final TransactionHistory history;
-    private final KafkaTemplate<String, Object> kafka;
+    private final OutboxRepository outbox;
+    private final ObjectMapper json;
     private final MeterRegistry meters;
     private final Timer evaluationTimer;
     private final DistributionSummary riskScore;
@@ -56,7 +65,8 @@ public class TransactionProcessor {
                                 RuleEngine engine,
                                 RuleConfigProvider config,
                                 TransactionHistory history,
-                                KafkaTemplate<String, Object> kafka,
+                                OutboxRepository outbox,
+                                ObjectMapper json,
                                 MeterRegistry meters) {
         this.transactions = transactions;
         this.alerts = alerts;
@@ -64,7 +74,8 @@ public class TransactionProcessor {
         this.engine = engine;
         this.config = config;
         this.history = history;
-        this.kafka = kafka;
+        this.outbox = outbox;
+        this.json = json;
         this.meters = meters;
 
         // At zero, for the same reason the failure counters are: a pipeline that
@@ -132,9 +143,11 @@ public class TransactionProcessor {
                 .register(meters);
 
         // At zero from startup, for the same reason as the consumer's failure
-        // counters: "no alert publish has ever failed" and "this panel is
-        // broken" must not look the same on a dashboard.
-        meters.counter("fraud.alerts.publish.failed");
+        // counters: "no alert has ever failed to reach the outbox" and "this
+        // panel is broken" must not look the same on a dashboard. Failures to
+        // reach the *broker* are counted by OutboxPublisher instead; they are a
+        // different fault with a different remedy.
+        meters.counter("fraud.alerts.enqueue.failed");
     }
 
     /**
@@ -177,8 +190,7 @@ public class TransactionProcessor {
         recordShadowHits(txn, evaluation);
 
         if (evaluation.isAlert()) {
-            FraudAlert alert = persistAlert(txn, evaluation);
-            publish(alert);
+            enqueue(persistAlert(txn, evaluation));
         }
 
         recordMetrics(txn, evaluation);
@@ -220,19 +232,35 @@ public class TransactionProcessor {
     }
 
     /**
-     * Publish for downstream consumers. Notification, case management and
-     * anything else can subscribe without the engine knowing they exist.
+     * Queue the alert for downstream consumers — notification, case management,
+     * anything else that subscribes without the engine knowing it exists.
+     *
+     * <p>A row, not a send. It commits with the alert, so the two facts cannot
+     * disagree: if the alert is in the database its announcement is queued, and
+     * if this transaction rolls back the announcement goes with it.
+     *
+     * <p>Serialised here rather than by the publisher, so the document that
+     * reaches the topic is the one this transaction decided on even if the code
+     * that shapes an alert changes before the row is drained.
      */
-    private void publish(FraudAlert alert) {
-        kafka.send(Topics.FRAUD_ALERTS, alert.transactionId().toString(), alert)
-                .whenComplete((result, ex) -> {
-                    if (ex != null) {
-                        // The alert is already durable in Postgres; a failed
-                        // publish loses a notification, not the detection.
-                        log.error("Failed to publish alert {}", alert.id(), ex);
-                        meters.counter("fraud.alerts.publish.failed").increment();
-                    }
-                });
+    private void enqueue(FraudAlert alert) {
+        try {
+            outbox.save(new OutboxEntity(
+                    alert.id(),
+                    Topics.FRAUD_ALERTS,
+                    alert.transactionId().toString(),
+                    json.writeValueAsString(alert)));
+        } catch (JacksonException e) {
+            // Nothing about this alert can be made publishable, so retrying it
+            // forever would be a poison row in the outbox. The detection itself
+            // is already durable, so the transaction is allowed to commit
+            // without the announcement -- loudly, and with a counter, because a
+            // silently unannounced alert is exactly what this class exists to
+            // prevent.
+            log.error("Alert {} could not be serialised for the outbox; "
+                    + "it is stored but will not be published", alert.id(), e);
+            meters.counter("fraud.alerts.enqueue.failed").increment();
+        }
     }
 
     private void recordMetrics(Transaction txn, Evaluation evaluation) {

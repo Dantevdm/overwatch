@@ -38,6 +38,19 @@ fi
 
 section() { printf '\n%s%s%s\n' "$B" "$1" "$N"; }
 
+# Reads the gauge out of the engine's own scrape rather than asking Prometheus,
+# so this says something about the engine even when the scrape is broken.
+outbox_is_drained() {
+  local pending
+  pending=$(docker compose exec -T fraud-engine \
+      wget -qO- http://localhost:8082/actuator/prometheus 2>/dev/null \
+    | awk '/^outbox_pending/ { print $2; exit }')
+  [[ -z "$pending" ]] && return 1
+  # A hundred is the batch size: one poll's worth in flight is normal, a
+  # standing multiple of it is not.
+  awk -v p="$pending" 'BEGIN { exit !(p < 100) }'
+}
+
 check() { # check <description> <command...>
   local desc="$1"; shift
   if "$@" >/dev/null 2>&1; then
@@ -227,6 +240,24 @@ if [[ "$have_docker" -eq 1 ]]; then
     internal_matches fraud-engine 8082 /actuator/prometheus 'fraud_risk_score_bucket.*le="0.8"'
   check "HTTP timings export histogram buckets" \
     internal_matches fraud-engine 8082 /actuator/prometheus "http_server_requests_seconds_bucket"
+
+  # The outbox. Alerts are announced by draining a table, not by a send inside
+  # the transaction that wrote them, so these two gauges are the only way to see
+  # that the announcement half of the pipeline is alive. Both are registered at
+  # startup, so a quiet pipeline exports them at zero -- which is what makes
+  # them worth asserting by name: "no data" would otherwise be the healthy case
+  # and a broken poller would look identical to a calm one.
+  check "outbox depth is exported" \
+    internal_matches fraud-engine 8082 /actuator/prometheus "outbox_pending"
+  check "outbox age is exported" \
+    internal_matches fraud-engine 8082 /actuator/prometheus "outbox_oldest_pending_seconds"
+  check "outbox publish counter is exported" \
+    internal_matches fraud-engine 8082 /actuator/prometheus "outbox_published_total"
+  # A backlog that is not draining. Asserted as a value rather than a presence:
+  # the poller runs every 200ms against a stream of a few alerts a second, so
+  # anything standing here means the drain has stopped.
+  check "the outbox is draining, not just growing" \
+    outbox_is_drained
 else
   skip "engine metrics (needs docker compose)"
   skip "simulator metrics (needs docker compose)"

@@ -48,12 +48,21 @@ public class DataResetService {
      * <p>{@code TRUNCATE transactions CASCADE} would be shorter and is what makes
      * this kind of thing dangerous: CASCADE truncates whatever happens to
      * reference the table, so a future migration adding a table nobody remembers
-     * would silently start being wiped by this endpoint. Naming all four means
+     * would silently start being wiped by this endpoint. Naming all five means
      * PostgreSQL rejects the statement outright if the graph ever grows a member
      * this list does not cover, which turns a silent data loss into a loud error.
+     *
+     * <p>alert_outbox is emptied with them, and has to be. It is not referenced
+     * by a foreign key -- deliberately, so that it survives its aggregate -- so
+     * nothing would have complained about leaving it. What it holds after a
+     * reset is announcements of alerts that no longer exist: the poller would
+     * publish them, and a downstream consumer would go looking for an alert id
+     * that is not in the database. Clearing the store means clearing what the
+     * store was about to say.
      */
     private static final String TRUNCATE = """
-            TRUNCATE TABLE alert_rule_hits, shadow_rule_hits, fraud_alerts, transactions
+            TRUNCATE TABLE alert_rule_hits, shadow_rule_hits, fraud_alerts,
+                           alert_outbox, transactions
             """;
 
     /**
@@ -68,7 +77,8 @@ public class DataResetService {
             new Counted("transactions", "transactions"),
             new Counted("alerts", "fraud_alerts"),
             new Counted("alertRuleHits", "alert_rule_hits"),
-            new Counted("shadowRuleHits", "shadow_rule_hits"));
+            new Counted("shadowRuleHits", "shadow_rule_hits"),
+            new Counted("queuedAnnouncements", "alert_outbox"));
 
     @PersistenceContext
     private EntityManager em;
@@ -91,10 +101,12 @@ public class DataResetService {
 
         em.createNativeQuery(TRUNCATE).executeUpdate();
 
-        log.warn("Data reset: cleared {} transactions, {} alerts, {} alert hits, {} shadow hits. "
+        log.warn("Data reset: cleared {} transactions, {} alerts, {} alert hits, "
+                        + "{} shadow hits, {} queued announcements. "
                         + "Rule configuration was not touched.",
                 removed.get("transactions"), removed.get("alerts"),
-                removed.get("alertRuleHits"), removed.get("shadowRuleHits"));
+                removed.get("alertRuleHits"), removed.get("shadowRuleHits"),
+                removed.get("queuedAnnouncements"));
 
         return removed;
     }

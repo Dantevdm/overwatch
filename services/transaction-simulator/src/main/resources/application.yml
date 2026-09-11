@@ -1,6 +1,14 @@
 spring:
   application:
     name: transaction-simulator
+  task:
+    scheduling:
+      shutdown:
+        # The generator itself runs on this scheduler, so waiting for it is what
+        # makes the flush below meaningful: a producer flushed while the thread
+        # feeding it is still running has nothing to guarantee.
+        await-termination: true
+        await-termination-period: 20s
   lifecycle:
     # Stops the scheduled publisher and lets the producer flush what it has
     # buffered. A killed producer loses its batch, and the published counter
