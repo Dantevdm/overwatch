@@ -690,7 +690,7 @@ green; the Docker stack job reported six smoke-test failures with one cause.
 - [x] Verification pass — cold `docker compose up`, smoke test 20/20, `mvn verify` green
 
 > Those figures are what Phase 8 measured. The current ones, after everything
-> below, are **136 tests across six modules, 52 smoke checks, 54 dashboard
+> below, are **138 tests across six modules, 54 smoke checks, 55 dashboard
 > queries, twelve containers**. Every number quoted inside a phase note is what
 > that phase measured and is left alone; this line is the one to read for today.
 
@@ -934,6 +934,49 @@ is made public.
 > hardware and false on every machine I could reproduce on. The check now
 > downloads to a file and asserts the status and the bytes separately, so the
 > next failure names its own cause.
+
+### Phase 8.21 — Somewhere for a message to go when it cannot be processed
+
+- [x] `transactions.DLT`, declared with 30-day retention
+- [x] `DeadLetterConfig` — a `DefaultErrorHandler` with a publishing recoverer
+- [x] Three attempts a second apart; unreadable records skip them
+- [x] `transactions_dead_lettered_total`, registered at zero, beside the existing counter
+- [x] Dashboard panel, smoke checks, and two more assertions in `PipelineIT`
+
+> This closes the last of the gaps the README listed. The old behaviour logged,
+> counted and dropped, which kept the partition moving — the important half — but
+> left a lost transaction with nothing behind it but a log line and a number. A
+> counter tells you that you lost something; a dead-letter topic tells you what.
+>
+> **The listener had to stop swallowing.** It catches, counts and rethrows now, so
+> the container's error handler can retry and then recover the record. The two
+> counters are kept apart deliberately: `transactions_failed_total` counts failed
+> attempts including retries, and `transactions_dead_lettered_total` counts records
+> given up on. Equal values mean the retries are buying nothing.
+>
+> **The test that was written wrong first.** The DLT test published
+> `{"this":"is not a transaction"}` expecting it to fail deserialisation. It does
+> not: Jackson is not configured to object to a document with none of the expected
+> fields, so it parsed cleanly into a Transaction with every field null, failed
+> later in processing, and was dead-lettered as the *parsed object* rather than the
+> original bytes. Two lessons, one in each direction. The claim in the
+> configuration's own comment — "the record published is the original one" — was
+> true for one of the two failure paths and not the other, which is the same
+> overstatement the outbox comments needed correcting for in Phase 8.17. And the
+> two paths are genuinely different and both worth a test, so there are now two.
+>
+> **And a third thing the integration test found.** Both DLT tests read the same
+> topic from the beginning, so whichever ran second asserted against the record the
+> first one left there. Fixed by matching on content rather than taking the first
+> record — which is the shape every assertion against a shared topic needs.
+>
+> **What the live stack then showed.** A malformed record produced a dead letter
+> whose value was byte-identical to what was sent, with the original topic,
+> partition, offset and the full exception in its headers — and
+> `transactions_failed_total` stayed at zero. The listener's null branch never ran:
+> the container routes a deserialisation failure straight to the error handler
+> without invoking the listener at all. That branch is now documented as the
+> backstop it is rather than as the mechanism it is not.
 
 ---
 

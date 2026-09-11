@@ -15,7 +15,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -72,12 +72,18 @@ class TransactionConsumerTest {
     }
 
     @Test
-    @DisplayName("a null payload is counted as a deserialization failure and never reaches the processor")
+    @DisplayName("a null payload is counted and rejected as unreadable, and never reaches the processor")
     void nullPayloadIsCountedNotProcessed() {
         // ErrorHandlingDeserializer hands us null when it cannot read the record.
         // Without that wrapper the container fails before this method and retries
         // the same record forever, which reads as a stalled pipeline.
-        consumer.onTransaction(null);
+        //
+        // The throw is the point: returning would commit the offset and the
+        // original bytes would be gone. Its own type, so the error handler can
+        // skip the retries — a record that cannot be parsed will not parse on
+        // the third attempt.
+        assertThatThrownBy(() -> consumer.onTransaction(null))
+                .isInstanceOf(UnreadableRecordException.class);
 
         verify(processor, never()).process(any());
         assertThat(failed("deserialization")).isEqualTo(1.0);
@@ -85,14 +91,16 @@ class TransactionConsumerTest {
     }
 
     @Test
-    @DisplayName("a poison message is counted and swallowed, so it cannot stall the partition")
-    void poisonMessageDoesNotStallThePartition() {
+    @DisplayName("a poison message is counted and rethrown, so the error handler can dead-letter it")
+    void poisonMessageIsHandedToTheErrorHandler() {
         Transaction t = txn();
-        when(processor.process(t)).thenThrow(new IllegalStateException("bad rule parameters"));
+        IllegalStateException boom = new IllegalStateException("bad rule parameters");
+        when(processor.process(t)).thenThrow(boom);
 
-        // The exception must not escape: escaping means the container redelivers
-        // the same record indefinitely and the partition stops moving.
-        assertThatCode(() -> consumer.onTransaction(t)).doesNotThrowAnyException();
+        // Rethrown rather than swallowed. Swallowing kept the partition moving
+        // and lost the record; the container's error handler does both — it
+        // retries, publishes to the dead-letter topic, and commits.
+        assertThatThrownBy(() -> consumer.onTransaction(t)).isSameAs(boom);
 
         assertThat(failed("processing")).isEqualTo(1.0);
         assertThat(failed("deserialization")).isZero();

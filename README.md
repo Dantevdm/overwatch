@@ -261,6 +261,7 @@ The metrics are business metrics, not just request counters:
 | `kafka_consumer_fetch_manager_records_lag` | Whether detection is keeping pace with traffic |
 | `simulator_diurnal_weight` | The time-of-day multiplier currently applied to the rate — explains a throughput change that is not a fault |
 | `transactions_redelivered_total` | Records Kafka delivered more than once and the engine declined to score twice |
+| `transactions_failed_total` / `transactions_dead_lettered_total` | Failed *attempts* against records *given up on*. Equal values mean retrying is buying nothing |
 | `outbox_pending` / `outbox_oldest_pending_seconds` | Whether every alert is being announced, and how far behind. Depth alone cannot tell a busy second from a stuck poller; age can |
 | `logback_events_total{level="error"}` | Error rate, without reading logs |
 
@@ -437,6 +438,55 @@ access.
 ```bash
 curl -s localhost:3200/api/search/tag/service.name/values
 ```
+
+---
+
+## When a message cannot be processed
+
+One bad record must not stop the partition, and until recently that was the only
+property this pipeline had: a record the engine could not handle was logged,
+counted and dropped. That keeps the stream moving, which is the important half.
+It also means the only trace of a lost transaction is a log line and a number
+going up — and neither of those can be replayed, inspected, or handed to whoever
+asks why a payment never appeared. **A counter tells you that you lost
+something. A dead-letter topic tells you what.**
+
+A failure now goes: retry three times a second apart, then publish to
+`transactions.DLT` with the failure in the headers, then commit and move on.
+
+- **The retries are deliberate and bounded.** Zero would dead-letter a
+  transaction because the database blinked, turning a blip into a manual recovery
+  job. Ten would hold the partition for the length of an outage while every
+  attempt fails for the same reason. Two seconds survives a reconnect and cannot
+  become a stalled consumer.
+- **A record that cannot be read skips them entirely.** It will not parse on the
+  third attempt, so those go straight to the topic.
+- **The topic keeps its messages for 30 days**, not the cluster default. A dead
+  letter is evidence, and a topic that ages it out in a week quietly destroys the
+  thing it exists to keep.
+
+What lands there depends on which failure happened, and the difference is worth
+being precise about rather than glossing:
+
+| Failure | What is published |
+|---|---|
+| The bytes did not deserialise | **The original bytes, verbatim** — recovered from the deserializer's own exception header, since the record's value is already null by the time anything else sees it |
+| It parsed, then processing failed | The parsed transaction as JSON. **Not** the original bytes: a field the producer sent that is not in the contract has already been dropped, and every contract field it omitted is present and null. What survives is the contract, which is what a replay would act on |
+
+Both carry `kafka_dlt-*` headers naming the original topic, partition, offset and
+the exception. A dead letter with no cause attached is a message in a folder
+nobody can act on.
+
+Two counters, because they answer different questions:
+`transactions_failed_total` counts failed attempts, retries included;
+`transactions_dead_lettered_total` counts records the engine gave up on. Equal
+values mean the retries are buying nothing. Both are registered at zero on
+startup, so the dashboard can say "none" rather than "No data".
+
+`PipelineIT` proves all of it against a real broker: malformed bytes arrive on
+the dead-letter topic byte-for-byte, a well-formed record of the wrong shape
+arrives as the parsed transaction, and a good transaction published straight
+after still becomes an alert.
 
 ---
 
@@ -829,13 +879,13 @@ migration. The chart palette was measured rather than eyeballed, which caught tw
 severity colours 4.1 ΔE apart. Every JSX file was parsed with esbuild.
 
 **Also executed, on a machine with Docker and Maven.** `mvn clean verify` passes
-green across all six modules — 136 tests, plus JaCoCo, SpotBugs with find-sec-bugs,
+green across all six modules — 138 tests, plus JaCoCo, SpotBugs with find-sec-bugs,
 and PMD. The stack was brought up cold with `docker compose up --build`: Flyway
 migrated, Hibernate's `ddl-auto: validate` accepted every entity against the
 migrated schema, the simulator published, the engine consumed and scored, and
 alerts landed in PostgreSQL — so Spring wiring, JPA at runtime and Kafka
 serialisation are all exercised rather than assumed. `./scripts/smoke-test.sh`
-reports 50 of 50, and `./scripts/verify-dashboards.py` confirms all 54 panel
+reports 54 of 54, and `./scripts/verify-dashboards.py` confirms all 55 panel
 queries return data against the live Prometheus and Loki. Every API endpoint was
 exercised against live data, including each optional filter, and every dashboard
 screen was loaded in a browser against the running stack. The headline
@@ -851,7 +901,9 @@ and both scripts green.
 **The broker path is now covered by a test rather than by a script.**
 `PipelineIT` starts a real Redpanda and a real PostgreSQL under Testcontainers,
 publishes raw JSON to `transactions`, and asserts that an alert is persisted,
-that it is announced on `fraud-alerts`, and that the outbox drains. It earned its
+that it is announced on `fraud-alerts`, that the outbox drains, and that a record
+the engine cannot handle reaches the dead-letter topic without stopping the
+partition. It earned its
 place immediately by finding two faults the unit tests could not: declaring the
 outbox `ProducerFactory` makes Boot's Kafka auto-configuration back off entirely,
 and `buildProducerProperties()` ignores `KafkaConnectionDetails`, so the outbox
@@ -873,7 +925,6 @@ the project plan.
 - **Single currency.** Everything is ZAR. The `currency` column exists so multi-currency is additive rather than a rewrite.
 - **Hand-set rule weights.** A learned model would be more interesting and considerably less verifiable in the time available.
 - **Polling, not WebSockets.** Five seconds is imperceptible on a dashboard and a fraction of the complexity.
-- **No dead-letter topic.** A poison message is logged and counted rather than stalling the partition; a real deployment would route it somewhere.
 - **Delivery is at-least-once, not exactly-once.** This is the gap the outbox traded for, and it is the better gap: an alert and its outbox row are written in one transaction, and a poller publishes from that table, so an alert can no longer exist on the topic without existing in the database. What can happen is the reverse — a publish that succeeds and a mark-as-published that does not, so the row is sent again on the next poll. Consumers must therefore be idempotent, and publication runs one 200ms poll behind the write. Both are visible: `outbox_pending` is the backlog and `outbox_oldest_pending_seconds` is how far behind it is.
 - **No Schema Registry.** Both topics carry plain JSON written by Spring's `JsonSerializer`, so a registry would have nothing in it — an empty registry reads as broken where "Not Configured" reads as a decision. The contract is enforced instead by the shared `services/common` module: producer and consumer compile against the same record, so a field rename breaks the build rather than a running consumer. That trade stops working the moment a consumer outside this repo subscribes, which is when a registry and a wire format that can carry a schema id start earning their keep.
 - **Replay ignores history-dependent rules.** Velocity and amount-deviation report nothing there rather than answering from a baseline that does not reflect the replayed window. A wrong answer delivered confidently is the failure mode worth avoiding in a tool meant to inform a threshold change.

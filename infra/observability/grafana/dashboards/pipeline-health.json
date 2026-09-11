@@ -262,8 +262,8 @@
     },
     {
       "type": "stat",
-      "title": "Transactions dropped",
-      "description": "Transactions the engine could not process, over the dashboard's range, split by reason: `deserialization` is a message it could not read, `processing` is one it read and then failed on. Both counters are registered at zero on startup, so a green zero here means \"nothing has failed\" rather than \"nothing is reporting\".",
+      "title": "Failed attempts",
+      "description": "Attempts to process a transaction that failed, over the dashboard's range, split by reason: `deserialization` is a message the engine could not read, `processing` is one it read and then failed on. This counts *attempts*, so one bad record that is retried twice counts three times — compare it against \"Given up on\" beside it, which counts records. Both counters are registered at zero on startup, so a green zero means \"nothing has failed\" rather than \"nothing is reporting\".",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -307,6 +307,52 @@
       ]
     },
     {
+      "type": "stat",
+      "title": "Given up on",
+      "description": "Records the engine stopped retrying and published to `transactions.DLT`, over the dashboard's range. This is the number that matters operationally: a failed attempt that succeeds on retry costs nothing, and a record that ends up here is one a person has to decide about. The message itself is on the dead-letter topic with the failure in its headers, so this figure is a pointer to something recoverable rather than a record of something lost. Registered at zero on startup.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "expr": "sum by (reason) (increase(transactions_dead_lettered_total[$__range]))",
+          "legendFormat": "{{reason}}",
+          "instant": true
+        }
+      ]
+    },
+    {
       "type": "timeseries",
       "title": "Published vs processed",
       "description": "The simulator's publish rate against the engine's processing rate. These two lines should sit on top of each other. A persistent gap between them is the same story the lag panel tells, seen as a rate rather than a backlog.",
@@ -318,7 +364,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 5
+        "y": 9
       },
       "fieldConfig": {
         "defaults": {
@@ -400,7 +446,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 5
+        "y": 9
       },
       "fieldConfig": {
         "defaults": {
@@ -455,7 +501,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 13
+        "y": 17
       },
       "panels": []
     },
@@ -471,7 +517,7 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 14
+        "y": 18
       },
       "fieldConfig": {
         "defaults": {
@@ -521,7 +567,7 @@
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 14
+        "y": 18
       },
       "fieldConfig": {
         "defaults": {
@@ -571,7 +617,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 14
+        "y": 18
       },
       "fieldConfig": {
         "defaults": {
@@ -615,7 +661,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 22
+        "y": 26
       },
       "collapsed": false,
       "panels": []
@@ -632,7 +678,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 23
+        "y": 27
       },
       "fieldConfig": {
         "defaults": {
@@ -734,7 +780,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 23
+        "y": 27
       },
       "options": {
         "calculate": false,
@@ -783,7 +829,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 31
+        "y": 35
       },
       "collapsed": false,
       "panels": []
@@ -800,7 +846,7 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 32
+        "y": 36
       },
       "fieldConfig": {
         "defaults": {
@@ -847,7 +893,7 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 32
+        "y": 36
       },
       "fieldConfig": {
         "defaults": {
@@ -893,7 +939,7 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 32
+        "y": 36
       },
       "fieldConfig": {
         "defaults": {
@@ -939,7 +985,7 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 39
+        "y": 43
       },
       "fieldConfig": {
         "defaults": {
@@ -985,7 +1031,7 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 39
+        "y": 43
       },
       "fieldConfig": {
         "defaults": {
@@ -1031,7 +1077,7 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 39
+        "y": 43
       },
       "fieldConfig": {
         "defaults": {
@@ -1103,7 +1149,7 @@
         "h": 4,
         "w": 24,
         "x": 0,
-        "y": 46
+        "y": 50
       },
       "fieldConfig": {
         "defaults": {

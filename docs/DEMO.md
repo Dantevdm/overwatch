@@ -20,7 +20,7 @@ Do this a few minutes ahead, not while someone is watching.
 
 ```bash
 make up                      # resolves port conflicts, then starts the stack
-./scripts/smoke-test.sh      # 52 checks — health, metrics, broker, DB, outbox, logs, reports
+./scripts/smoke-test.sh      # 54 checks — health, metrics, broker, DB, outbox, logs, reports
 ```
 
 Then leave the stack running for **at least ten minutes** before you demonstrate.
@@ -128,6 +128,12 @@ come up in a code review:
 > can never exist on the topic without existing in the database. The trade is
 > at-least-once delivery — a publish that succeeds and a mark that does not gets
 > sent again — and the backlog and its age are both on the pipeline dashboard."
+
+> "And going the other way: a transaction the engine cannot process is retried
+> three times and then published to a dead-letter topic with the failure in its
+> headers, rather than logged and dropped. If it never deserialised, what lands
+> there is the original bytes — so it can be replayed, or handed back to whoever
+> sent it. A counter tells you that you lost something; the topic tells you what."
 
 > "And when you want to follow one transaction across all of it, there is a trace.
 > The producer's span is the parent of the consumer's span across the broker,
@@ -335,7 +341,7 @@ transactions.** And the Rules screen shows each rule's actual share of alerts, s
 rule that fires on everything is visible rather than inferred.
 
 **"What is the test coverage?"** `mvn verify` is the gate and it fails the build,
-not just the report: 136 tests across six modules, a JaCoCo line-coverage floor,
+not just the report: 138 tests across six modules, a JaCoCo line-coverage floor,
 SpotBugs with find-sec-bugs (~130 security detectors), and PMD. One of those tests
 starts a real Redpanda and a real PostgreSQL under Testcontainers and drives a
 transaction all the way to a published alert — it found two faults within an hour

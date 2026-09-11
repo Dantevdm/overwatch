@@ -329,6 +329,8 @@ if [[ "$have_docker" -eq 1 ]]; then
     internal_matches fraud-engine 8082 /actuator/prometheus "outbox_pending"
   check "outbox age is exported" \
     internal_matches fraud-engine 8082 /actuator/prometheus "outbox_oldest_pending_seconds"
+  check "dead-letter counter is exported" \
+    internal_matches fraud-engine 8082 /actuator/prometheus "transactions_dead_lettered_total"
   check "outbox publish counter is exported" \
     internal_matches fraud-engine 8082 /actuator/prometheus "outbox_published_total"
   # A backlog that is not draining. Asserted as a value rather than a presence:
@@ -455,6 +457,15 @@ if [[ "$have_docker" -eq 1 ]]; then
     docker compose exec -T postgres pg_isready -U overwatch -d overwatch
   check "Redpanda cluster healthy" \
     sh -c "docker compose exec -T redpanda rpk cluster health | grep -q 'Healthy:.*true'"
+  # Declared rather than auto-created, and checked rather than assumed. Nothing
+  # writes to the dead-letter topic on a healthy day, so the first thing to
+  # discover it missing would be the recoverer, at the moment it is trying to
+  # save a record from being lost. Deliberately does not publish anything to
+  # prove the path works — that belongs in PipelineIT, which has a broker it is
+  # allowed to make a mess of, not in a script people run against a stack they
+  # are demonstrating.
+  check "dead-letter topic exists" \
+    sh -c "docker compose exec -T redpanda rpk topic list | grep -q 'transactions.DLT'"
 else
   skip "PostgreSQL check (docker compose unavailable from here)"
   skip "Redpanda check (docker compose unavailable from here)"

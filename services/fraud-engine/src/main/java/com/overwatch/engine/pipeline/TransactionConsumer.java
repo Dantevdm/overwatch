@@ -14,6 +14,14 @@ import org.springframework.stereotype.Component;
  * <p>Deliberately thin: it is the transport boundary and nothing else. All the
  * behaviour lives in {@link TransactionProcessor}, which is what lets the pipeline
  * be tested without a broker.
+ *
+ * <p>It counts failures and then rethrows them. That is a change from the
+ * original, which caught and dropped: catching kept the partition moving, which
+ * was the important half, but it also meant a record the engine could not handle
+ * left nothing behind but a log line and a number. Rethrowing hands the record to
+ * the container's error handler, which retries it and then publishes it to the
+ * dead-letter topic — so the partition still keeps moving and the record still
+ * exists. See {@code DeadLetterConfig}.
  */
 @Component
 public class TransactionConsumer {
@@ -43,23 +51,36 @@ public class TransactionConsumer {
 
     @KafkaListener(topics = Topics.TRANSACTIONS, groupId = "fraud-engine")
     public void onTransaction(Transaction txn) {
-        // A null payload means ErrorHandlingDeserializer could not read the record.
-        // Without that wrapper the container would fail before reaching this method
-        // and retry the same record forever, which looks like a stalled pipeline
-        // rather than a bad message.
+        // A backstop, and measured to be one. A record that ErrorHandlingDeserializer
+        // could not read does not reach this method at all in the current setup:
+        // the container sees the deserializer's exception header and hands the
+        // record straight to the error handler, which dead-letters it — verified
+        // against a live stack, where a malformed record raised
+        // transactions_dead_lettered_total and left transactions_failed_total at
+        // zero. The branch stays because the wrapper can be configured to deliver
+        // a null payload instead, and a silent `return` on that path would commit
+        // the offset and lose the bytes.
+        //
+        // Thrown rather than returned for that reason, and as its own type so the
+        // error handler can skip the retries: a record that cannot be parsed will
+        // not parse on the third attempt.
         if (txn == null) {
-            log.warn("Skipping a record that could not be deserialized");
             meters.counter("transactions.failed", "reason", REASON_DESERIALIZATION).increment();
-            return;
+            throw new UnreadableRecordException("A record on " + Topics.TRANSACTIONS
+                    + " could not be deserialized");
         }
         try {
             processor.process(txn);
         } catch (RuntimeException e) {
-            // One poison message must not stall the partition. A dead-letter topic
-            // belongs here in production; recorded as a known gap rather than
-            // half-built.
-            log.error("Failed to process transaction {}; skipping", txn.id(), e);
+            // Counted here and rethrown, so this counts failed *attempts* —
+            // retries included — while the dead-letter counter counts the
+            // records actually given up on. One poison message still cannot
+            // stall the partition: the error handler retries it a fixed number
+            // of times and then moves on.
+            log.error("Failed to process transaction {}; handing it to the error handler",
+                    txn.id(), e);
             meters.counter("transactions.failed", "reason", REASON_PROCESSING).increment();
+            throw e;
         }
     }
 }
