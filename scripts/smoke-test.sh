@@ -131,10 +131,23 @@ internal_matches() { # internal_matches <service> <port> <path> <pattern>
 # rather than by the Content-Type header: a controller that serialises an error
 # to JSON still sets the header it was declared with, so the header alone would
 # pass on exactly the failure worth catching.
-downloads_as() { # downloads_as <url> <magic>
-  local head
-  head=$(curl -fsS "$1" 2>/dev/null | head -c 4 | od -An -c | tr -d ' \n') || return 1
-  [[ "$head" == *"$2"* ]]
+# Downloads to a file and reports the HTTP status, so a failure can say whether
+# the request was refused or the bytes were wrong. Deliberately not a pipeline:
+# `curl | head -c 4` makes curl die of EPIPE under `set -o pipefail`, which is
+# the trap documented for internal_matches above, and a status code lost inside
+# a pipe is exactly what made the first version of this check fail in CI with
+# nothing to say about why.
+fetch_to() { # fetch_to <url> <path>
+  local status
+  status=$(curl -sS -o "$2" -w '%{http_code}' "$1" 2>/dev/null) || return 1
+  echo "$status"
+  [[ "$status" == 2?? ]]
+}
+
+# The first bytes of a file, as od renders them. Reading a file rather than a
+# stream, so -N can stop early without anything upstream to break.
+file_starts_with() { # file_starts_with <path> <magic>
+  [[ "$(od -An -c -N 4 "$1" 2>/dev/null | tr -d ' \n')" == "$2"* ]]
 }
 
 body_matches() { # body_matches <url> <pattern>
@@ -245,12 +258,27 @@ check "data reset endpoint is registered" \
 # ---------------------------------------------------------------------------
 section "Reports"
 # ---------------------------------------------------------------------------
+# Fetched once each, then asserted twice: that the request succeeded, and that
+# the bytes are the format the endpoint claims. Split so a failure says which —
+# a 500 and a valid-but-wrong file are different faults with different fixes.
+reports_dir=$(mktemp -d)
+trap 'rm -rf "$reports_dir"' EXIT
+
+xlsx_status=$(fetch_to "$API_BASE/api/reports/fraud-summary.xlsx?rangeMinutes=60" \
+  "$reports_dir/report.xlsx" || true)
+pdf_status=$(fetch_to "$API_BASE/api/reports/fraud-summary.pdf?rangeMinutes=60" \
+  "$reports_dir/report.pdf" || true)
+
+check "the workbook endpoint answers 200 (got ${xlsx_status:-no response})" \
+  test "$xlsx_status" = "200"
+check "the document endpoint answers 200 (got ${pdf_status:-no response})" \
+  test "$pdf_status" = "200"
 # PK\003\004 is a zip's local file header, which is what an .xlsx is; %PDF is
-# the PDF signature. Both are the first four bytes of the response.
-check "the workbook downloads as a real workbook" \
-  downloads_as "$API_BASE/api/reports/fraud-summary.xlsx?rangeMinutes=60" 'PK'
-check "the document downloads as a real PDF" \
-  downloads_as "$API_BASE/api/reports/fraud-summary.pdf?rangeMinutes=60" '%PDF'
+# the PDF signature.
+check "the workbook really is a workbook" \
+  file_starts_with "$reports_dir/report.xlsx" 'PK'
+check "the document really is a PDF" \
+  file_starts_with "$reports_dir/report.pdf" '%PDF'
 check "the report names itself after the time it was generated" \
   header_matches "$API_BASE/api/reports/fraud-summary.pdf" \
     'Content-Disposition:.*filename="overwatch-fraud-report-[0-9-]*\.pdf"'
