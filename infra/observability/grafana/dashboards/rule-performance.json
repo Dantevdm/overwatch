@@ -422,7 +422,7 @@
     {
       "type": "stat",
       "title": "Pipeline failures",
-      "description": "Not rule failures, which is what this panel used to claim. `deserialization` is a message the engine could not read, `processing` is one it read and then failed on, and `publish` is an alert that was saved to Postgres but could not be announced on Kafka — a lost notification, not a lost detection. A rule that throws is contained by the engine and shows up as `processing`.",
+      "description": "Not rule failures, which is what this panel used to claim. `deserialization` is a message the engine could not read, `processing` is one it read and then failed on, and `publish` is an alert that was saved to Postgres but could not be announced on Kafka — a lost notification, not a lost detection. A rule that throws is contained by the engine and shows up as `processing`. The announce series covers both halves of the outbox: alerts that could not be queued at all (a serialisation fault, which loses the announcement) and rows the broker rejected (which are retried on the next poll, so they are a delay rather than a loss).",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -465,8 +465,8 @@
           "instant": true
         },
         {
-          "expr": "sum(increase(fraud_alerts_publish_failed_total[$__range]))",
-          "legendFormat": "publish",
+          "expr": "sum(increase(outbox_publish_failed_total[$__range])) + sum(increase(fraud_alerts_enqueue_failed_total[$__range]))",
+          "legendFormat": "announce",
           "instant": true
         }
       ]

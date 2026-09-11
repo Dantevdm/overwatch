@@ -1,0 +1,170 @@
+// Grafana Alloy: collect container logs, parse them, ship them to Loki.
+//
+// Alloy rather than Promtail. Promtail reached end of life in early 2025 and
+// Alloy is its replacement; for this pipeline they are the same three stages —
+// discover containers, parse lines, push — and choosing the deprecated one would
+// mean writing a config that is already advice not to follow.
+//
+// Everything here exists because Spring Boot's console format is not
+// structured. A JSON encoder on each service would make the parsing stages
+// unnecessary, and that is the right answer for a system whose logs are read by
+// machines. It is the wrong answer for this one: the console output is read by a
+// person watching `docker compose logs` during a demo, and JSON lines are
+// unreadable there. So the log stays human and Alloy does the work.
+
+// ---- discovery ------------------------------------------------------------
+
+discovery.docker "containers" {
+	host = "unix:///var/run/docker.sock"
+	// Only this project's containers. The socket shows every container on the
+	// machine, and hoovering up whatever else the reader happens to be running
+	// is both noisy and none of this stack's business.
+	filter {
+		name   = "label"
+		values = ["com.docker.compose.project"]
+	}
+	refresh_interval = "15s"
+}
+
+// Turn Docker's metadata into the labels a dashboard can group by.
+//
+// Low cardinality on purpose: every distinct label combination is a stream in
+// Loki, and the usual way a small Loki falls over is a label like container id
+// or thread name multiplying streams into the thousands. Service and level are
+// the two things anyone actually filters on.
+discovery.relabel "containers" {
+	targets = discovery.docker.containers.targets
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+		target_label  = "service"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		// Docker reports the name with a leading slash.
+		regex        = "/?(.*)"
+		target_label = "container"
+	}
+
+	rule {
+		target_label = "stack"
+		replacement  = "overwatch"
+	}
+}
+
+// ---- collection -----------------------------------------------------------
+
+loki.source.docker "containers" {
+	host       = "unix:///var/run/docker.sock"
+	targets    = discovery.relabel.containers.output
+	labels     = {}
+	relabel_rules = discovery.relabel.containers.rules
+	forward_to = [loki.process.spring_boot.receiver]
+}
+
+// ---- parsing --------------------------------------------------------------
+
+loki.process "spring_boot" {
+
+	// A Java stack trace is one event, not forty.
+	//
+	// This is the stage that matters, and the reason logs-in-Grafana is usually
+	// disappointing without it: unfolded, an exception arrives as its message
+	// followed by dozens of frames as separate entries, the message scrolls off
+	// the top of the panel, and the reader is left holding the middle of a trace
+	// with no idea what threw. Folding on "a new entry starts with a timestamp"
+	// keeps the trace attached to the line that explains it.
+	stage.multiline {
+		firstline     = "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"
+		max_wait_time = "3s"
+		// Bounded, because a runaway trace should not become a single
+		// unboundedly large entry -- and because Loki's own line limit would
+		// then reject the whole thing rather than the tail of it.
+		max_lines = 200
+	}
+
+	// Spring Boot's default console pattern, as it actually appears:
+	//
+	//   2026-09-11T07:00:34.319Z  INFO 1 --- [fraud-engine] [ntainer#0-0-C-1] c.o.e.p.TransactionProcessor : Alert raised
+	//
+	// Named groups rather than positional, so a pattern change breaks loudly in
+	// one place instead of quietly relabelling every log line.
+	stage.regex {
+		expression = "^(?P<timestamp>\\S+)\\s+(?P<level>[A-Z]+)\\s+(?P<pid>\\d+)\\s+---\\s+\\[(?P<app>[^\\]]*)\\]\\s+\\[(?P<thread>[^\\]]*)\\]\\s+(?P<logger>\\S+)\\s+:\\s*(?P<message>(?s:.*))$"
+	}
+
+	// A level that is missing is a level, not a blank.
+	//
+	// Not every line in this stack is Spring Boot: Postgres, Redpanda and Grafana
+	// all log in their own formats and fall through the regex above. Left empty,
+	// those lines vanish from a dashboard whose level filter is a dropdown of
+	// known values -- which is worse than showing them as UNKNOWN, because the
+	// reader cannot then tell the difference between "nothing was logged" and
+	// "it was logged in a format nobody taught this file about".
+	stage.template {
+		source   = "level"
+		template = "{{ if .Value }}{{ .Value }}{{ else }}UNKNOWN{{ end }}"
+	}
+
+	// Level becomes a label; everything else stays in the line.
+	//
+	// Only level, and only because filtering by it is the first thing anyone
+	// does. Promoting logger or thread would look tidier in a dropdown and would
+	// multiply streams by every class that logs -- Loki's documented way to make
+	// itself slow.
+	stage.labels {
+		values = {
+			level = "",
+		}
+	}
+
+	// Break the feedback loop.
+	//
+	// Grafana logs a line for every datasource query it proxies. Opening the
+	// logs dashboard therefore produces log lines, which the dashboard then
+	// displays, which -- on a ten-second refresh -- buries the application logs
+	// under a running commentary of the act of reading them. Watching the panel
+	// for a minute put a dozen of its own queries at the top of its own output.
+	//
+	// Dropped rather than filtered in the dashboard query, because the cost of
+	// collecting them is paid whether or not they are displayed, and nobody has
+	// ever needed to know that Grafana successfully asked Loki a question.
+	// Everything else Grafana logs is kept: if provisioning fails or a
+	// datasource is unreachable, that still has to be visible here.
+	stage.match {
+		selector = "{service=\"grafana\"}"
+
+		stage.drop {
+			expression          = ".*(msg=\"Response from loki\"|path=/api/ds/query|handler=/api/live/ws).*"
+			drop_counter_reason = "grafana_query_echo"
+		}
+	}
+
+	stage.label_keep {
+		values = ["service", "container", "stack", "level"]
+	}
+
+	// The timestamp the application recorded, not the one Alloy read it at.
+	// Without this a container that falls behind has its whole backlog
+	// timestamped at the moment it caught up, and the order of events on a
+	// dashboard is the order they were collected in.
+	stage.timestamp {
+		source = "timestamp"
+		format = "RFC3339Nano"
+		// Fall back to the ingestion time rather than dropping the entry: a line
+		// with an unparseable timestamp is still evidence.
+		action_on_failure = "fudge"
+	}
+
+	forward_to = [loki.write.default.receiver]
+}
+
+// ---- shipping -------------------------------------------------------------
+
+loki.write "default" {
+	endpoint {
+		url = "http://loki:3100/loki/api/v1/push"
+	}
+	external_labels = {}
+}

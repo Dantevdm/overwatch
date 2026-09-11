@@ -1,0 +1,293 @@
+{
+  "uid": "overwatch-logs",
+  "title": "Overwatch — Logs",
+  "description": "Every container's log, in one place, filtered by service and level. This exists because the metrics dashboards can tell you a pipeline fell behind at 14:02 and cannot tell you what it was complaining about — and because `docker compose logs -f` interleaves eleven containers into a stream nobody can read during a demo. Java stack traces are folded into the line that threw them, so an exception is one entry rather than forty.",
+  "tags": [
+    "overwatch",
+    "platform",
+    "logs"
+  ],
+  "timezone": "Africa/Johannesburg",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "10s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "links": [
+    {
+      "title": "Pipeline Health",
+      "type": "dashboards",
+      "tags": [
+        "platform"
+      ],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": true,
+      "icon": "external link"
+    },
+    {
+      "title": "Fraud Overview",
+      "type": "dashboards",
+      "tags": [
+        "fraud"
+      ],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": true,
+      "icon": "external link"
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Service",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values(service)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".+",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "description": "Compose service name. Built from the labels Loki has, so a new container appears here on its own."
+      },
+      {
+        "name": "level",
+        "label": "Level",
+        "type": "custom",
+        "query": "ERROR,WARN,INFO,DEBUG,TRACE,UNKNOWN",
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".+",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": [
+          {
+            "selected": false,
+            "text": "ERROR",
+            "value": "ERROR"
+          },
+          {
+            "selected": false,
+            "text": "WARN",
+            "value": "WARN"
+          },
+          {
+            "selected": false,
+            "text": "INFO",
+            "value": "INFO"
+          },
+          {
+            "selected": false,
+            "text": "DEBUG",
+            "value": "DEBUG"
+          },
+          {
+            "selected": false,
+            "text": "TRACE",
+            "value": "TRACE"
+          },
+          {
+            "selected": false,
+            "text": "UNKNOWN",
+            "value": "UNKNOWN"
+          }
+        ],
+        "description": "Log level. Pick ERROR to see only what went wrong; the timeline above stays complete either way."
+      },
+      {
+        "name": "search",
+        "label": "Contains",
+        "type": "textbox",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "description": "Free-text filter, case-insensitive. Applied as a LogQL line filter, so it narrows the stream before it is shipped to your browser rather than after."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "What is going wrong",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1
+    },
+    {
+      "type": "timeseries",
+      "title": "Errors and warnings per minute, by service",
+      "description": "Read this first, then scroll. A spike here is where to point the time picker; the log panel below is scoped to the same range, so narrowing to the spike narrows the lines. Deliberately not filtered by the Level dropdown — the point of this panel is to find errors, which it cannot do if the reader has filtered them out.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 16,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "cpm",
+          "decimals": 1,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "sum"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (service) (count_over_time({stack=\"overwatch\", level=\"ERROR\", service=~\"$service\"} [1m]))",
+          "legendFormat": "{{service}} ERROR"
+        },
+        {
+          "expr": "sum by (service) (count_over_time({stack=\"overwatch\", level=\"WARN\", service=~\"$service\"} [1m]))",
+          "legendFormat": "{{service}} WARN"
+        }
+      ],
+      "id": 2
+    },
+    {
+      "type": "stat",
+      "title": "Errors in range",
+      "description": "Total ERROR lines across the selected services for the whole time range. Zero is the expected reading: this stack logs an error when a rule throws, when a record cannot be deserialised, or when an outbox send is rejected, and none of those should be routine. Reads 0 rather than \"No data\" when nothing has gone wrong: an empty tile is ambiguous between a quiet stack and a broken query, and those want different reactions.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 25
+              }
+            ]
+          },
+          "noValue": "0"
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "value_and_name",
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({stack=\"overwatch\", level=\"ERROR\", service=~\"$service\"} [$__range]))",
+          "legendFormat": "errors"
+        }
+      ],
+      "id": 3
+    },
+    {
+      "type": "row",
+      "title": "The log",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "id": 4
+    },
+    {
+      "type": "logs",
+      "title": "$service · $level",
+      "description": "Newest first. Levels are coloured by Grafana from the level label, so ERROR lines are red without a transform — which is the reason level is a label rather than a field left in the message. The Contains box filters the line server-side.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "expr": "{stack=\"overwatch\", service=~\"$service\", level=~\"$level\"} |~ \"(?i)$search\"",
+          "queryType": "range",
+          "maxLines": 2000
+        }
+      ],
+      "id": 5
+    }
+  ]
+}

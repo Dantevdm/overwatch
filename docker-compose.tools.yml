@@ -29,3 +29,17 @@ services:
   transaction-simulator:
     ports:
       - "${OW_SIMULATOR_PORT:-8081}:8081"
+
+  loki:
+    ports:
+      # For curling LogQL directly:
+      #   curl -sG localhost:3100/loki/api/v1/query_range \
+      #     --data-urlencode 'query={service="fraud-engine"} |= "ERROR"'
+      - "${OW_LOKI_PORT:-3100}:3100"
+
+  alloy:
+    ports:
+      # Alloy's own UI, at /graph — shows each component's state and how many
+      # targets it discovered, which is the first place to look when a service's
+      # logs are missing from the dashboard.
+      - "${OW_ALLOY_PORT:-12345}:12345"

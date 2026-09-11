@@ -1,0 +1,64 @@
+# Loki, single-binary, filesystem-backed.
+#
+# This is the smallest configuration that is still a real Loki rather than a
+# toy: it indexes with TSDB, stores chunks on a local volume, and enforces
+# retention. There is no object store, no ring beyond itself and no
+# multi-tenancy, because this stack runs on one machine and the alternative is
+# six containers to read the same logs.
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  # Quieter than the default. Loki logs its own requests at info, and Alloy
+  # pushes every few seconds, so at info this container out-logs the entire
+  # application stack it was brought in to observe.
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  # Java stack traces. A single entry can be a hundred lines, and the default
+  # 256KB line limit would reject the trace and keep the one-line message that
+  # says an exception occurred without saying what it was.
+  max_line_size: 1MB
+  max_line_size_truncate: false
+  # Retention. This is a demo stack that gets left running; without a limit the
+  # volume grows until the machine complains, and nobody debugging a demo needs
+  # last week.
+  retention_period: 72h
+  # Ingest a batch that arrives out of order, which happens whenever Alloy
+  # reconnects to a container and replays what it missed.
+  reject_old_samples: true
+  reject_old_samples_max_age: 72h
+
+compactor:
+  working_directory: /loki/compactor
+  # Retention is only enforced when the compactor is told to do it. Setting
+  # retention_period above and leaving this off is the usual way a Loki grows
+  # forever while appearing to be configured not to.
+  retention_enabled: true
+  delete_request_store: filesystem
+
+analytics:
+  reporting_enabled: false

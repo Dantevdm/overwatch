@@ -38,6 +38,27 @@ fi
 
 section() { printf '\n%s%s%s\n' "$B" "$1" "$N"; }
 
+# Loki is not published to the host by the base stack, so these go through the
+# compose network the same way the engine's metrics checks do.
+loki_matches() { # loki_matches <logql> <expected substring>
+  docker compose exec -T loki \
+      wget -qO- "http://localhost:3100/loki/api/v1/query_range?query=$(urlencode "$1")&limit=5" \
+    2>/dev/null | grep -q "$2"
+}
+
+loki_label_has() { # loki_label_has <label> <expected value>
+  docker compose exec -T loki \
+      wget -qO- "http://localhost:3100/loki/api/v1/label/$1/values" \
+    2>/dev/null | grep -q "\"$2\""
+}
+
+# Minimal percent-encoding: enough for the LogQL selectors above, which are the
+# only thing this script sends. A general encoder would be more code than the
+# checks it serves.
+urlencode() {
+  printf '%s' "$1" | sed -e 's/{/%7B/g' -e 's/}/%7D/g' -e 's/"/%22/g' -e 's/=/%3D/g' -e 's/ /%20/g'
+}
+
 # Reads the gauge out of the engine's own scrape rather than asking Prometheus,
 # so this says something about the engine even when the scrape is broken.
 outbox_is_drained() {
@@ -332,10 +353,34 @@ check "Grafana permits framing (Metrics page)" \
   header_absent "http://localhost:${OW_GRAFANA_PORT:-3000}/api/health" 'x-frame-options'
 # The three UIDs the Metrics page frames. A renamed dashboard keeps its UID; a
 # re-created one may not, and then one tab frames a Grafana 404.
-for uid in overwatch-pipeline overwatch-fraud overwatch-rules; do
+check "Loki datasource provisioned" \
+  body_matches "http://localhost:${OW_GRAFANA_PORT:-3000}/api/datasources" '"uid":"loki"'
+
+for uid in overwatch-pipeline overwatch-fraud overwatch-rules overwatch-logs; do
   check "dashboard $uid resolves by UID" \
     body_matches "http://localhost:${OW_GRAFANA_PORT:-3000}/api/dashboards/uid/$uid" '"uid"'
 done
+
+# ---------------------------------------------------------------------------
+section "Logs"
+# ---------------------------------------------------------------------------
+if [[ "$have_docker" -eq 1 ]]; then
+  check "Loki is ready" \
+    internal_matches loki 3100 /ready "ready"
+  # The pipeline is discovery -> parse -> ship, and each of the next three
+  # checks fails differently. Labels present but no lines means the parser
+  # dropped everything; lines present without a level means the regex stopped
+  # matching Spring Boot's format, which is the change most likely to happen
+  # quietly on a framework upgrade.
+  check "Loki has the engine's logs" \
+    loki_matches '{service="fraud-engine"}' 'fraud-engine'
+  check "log levels are extracted as labels" \
+    loki_label_has level ERROR
+  check "every service is shipping" \
+    loki_label_has service fraud-api
+else
+  skip "log collection (needs docker compose)"
+fi
 
 # ---------------------------------------------------------------------------
 section "Dashboard UI"

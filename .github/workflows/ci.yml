@@ -144,12 +144,23 @@ jobs:
           set -euo pipefail
           q() { psql -h localhost -U overwatch -d overwatch -t -A -c "$1"; }
 
-          tables=$(q "SELECT COUNT(*) FROM pg_tables WHERE schemaname='public';")
+          # The tables by name, not by count. A count says "expected 5, got 6"
+          # and leaves you to work out which — this says which, and catches a
+          # rename that a count would pass straight over.
+          tables=$(q "SELECT string_agg(tablename, ',' ORDER BY tablename)
+                        FROM pg_tables WHERE schemaname='public'
+                         AND tablename <> 'flyway_schema_history';")
           rules=$(q  "SELECT COUNT(*) FROM fraud_rules;")
           shadow=$(q "SELECT COUNT(*) FROM fraud_rules WHERE state='SHADOW';")
 
           echo "tables=$tables rules=$rules shadow=$shadow"
-          [ "$tables" -eq 5 ] || { echo "expected 5 tables, got $tables"; exit 1; }
+          expected='alert_outbox,alert_rule_hits,fraud_alerts,fraud_rules,shadow_rule_hits,transactions'
+          [ "$tables" = "$expected" ] || {
+            echo "schema differs from what this job expects"
+            echo "  expected: $expected"
+            echo "  actual:   $tables"
+            exit 1
+          }
           [ "$rules"  -ge 7 ] || { echo "expected >=7 seeded rules, got $rules"; exit 1; }
           [ "$shadow" -ge 1 ] || { echo "expected a rule shipped in SHADOW"; exit 1; }
 

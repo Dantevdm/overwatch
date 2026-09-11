@@ -1,0 +1,20 @@
+# Loki, provisioned alongside Prometheus so logs are one click from the metric
+# that made you want them.
+apiVersion: 1
+
+datasources:
+  - name: Loki
+    # A stable uid for the same reason Prometheus has one: the logs dashboard
+    # names it explicitly rather than relying on which datasource happens to be
+    # default, so adding a third datasource cannot silently rebind every panel.
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    isDefault: false
+    editable: false
+    jsonData:
+      # Cap what one panel can pull back. A logs panel with no limit against a
+      # busy stack will happily try to render a hundred thousand lines and hang
+      # the browser tab, which reads as "the dashboard is broken".
+      maxLines: 2000

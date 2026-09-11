@@ -29,6 +29,13 @@ const TOOLS = [
     hint: 'Dashboards and PromQL',
   },
   {
+    // Straight to the logs dashboard rather than to Grafana's home, because
+    // "it's in Grafana somewhere" is how a reviewer decides not to look.
+    href: `${import.meta.env.VITE_GRAFANA_URL || 'http://localhost:3000'}/d/overwatch-logs`,
+    label: 'Logs',
+    hint: 'Every container, filtered by service and level',
+  },
+  {
     href: import.meta.env.VITE_PROMETHEUS_URL || 'http://localhost:9090',
     label: 'Prometheus',
     hint: 'Raw metrics and scrape targets',

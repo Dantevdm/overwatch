@@ -261,6 +261,7 @@ The metrics are business metrics, not just request counters:
 | `kafka_consumer_fetch_manager_records_lag` | Whether detection is keeping pace with traffic |
 | `simulator_diurnal_weight` | The time-of-day multiplier currently applied to the rate — explains a throughput change that is not a fault |
 | `transactions_redelivered_total` | Records Kafka delivered more than once and the engine declined to score twice |
+| `outbox_pending` / `outbox_oldest_pending_seconds` | Whether every alert is being announced, and how far behind. Depth alone cannot tell a busy second from a stuck poller; age can |
 | `logback_events_total{level="error"}` | Error rate, without reading logs |
 
 All three distributions are exported as Prometheus **histograms** rather than as
@@ -275,15 +276,16 @@ Risk score and flagged amount use **chosen** bucket edges rather than Micrometer
 automatic ones. The automatic buckets are generated for timers and land on a
 power-of-ten ladder; both of these quantities have meaningful edges of their own,
 and picking them means a heatmap row corresponds to something a person reasons
-about — the 0.75 severity break, or R25 000 — instead of an arbitrary boundary.
+about — the 0.60 severity break, or R25 000 — instead of an arbitrary boundary.
 
-Three dashboards ship with the stack:
+Four dashboards ship with the stack:
 
 | Dashboard | Answers |
 |---|---|
-| **Pipeline health** | Is the pipeline keeping up, and is anything falling over — consumer lag, published against processed, dropped transactions, error rate, detection latency, and the JVM, CPU and connection pool underneath |
+| **Pipeline health** | Is the pipeline keeping up, and is anything falling over — consumer lag, published against processed, the outbox backlog, dropped transactions, error rate, detection latency, and the JVM, CPU and connection pool underneath |
 | **Fraud overview** | What the rules are catching — alert volume and rate, severity mix, value flagged and how those amounts are distributed, and the traffic mix by category and channel |
 | **Rule performance** | Which rules earn their place — per-rule contribution, shadow hits, fire rate, and where the risk scores actually land |
+| **Logs** | What the pipeline was complaining about — every container's log, filtered by service and level, with Java stack traces folded into the line that threw them |
 
 Every count and pie is scoped to the dashboard's time picker via
 `increase(...[$__range])`, so changing the range changes the numbers. Lifetime
@@ -319,6 +321,69 @@ whose query is broken.
 
 ---
 
+## Logs
+
+Metrics say the pipeline fell behind at 14:02. Logs say why. Both are in Grafana,
+so those two questions are a click apart rather than a tool apart — and neither
+is `docker compose logs -f`, which interleaves eleven containers into a stream
+nobody can read while presenting.
+
+**Loki** stores them; **Grafana Alloy** collects them. Alloy rather than
+Promtail: Promtail reached end of life in early 2025, and for this pipeline —
+discover containers, parse lines, push — they are the same three stages, so
+choosing the deprecated one would mean writing a config that is already advice
+not to follow.
+
+Four decisions in [`config.alloy`](infra/observability/alloy/config.alloy) are
+what make the result readable rather than merely collected:
+
+- **A Java stack trace is one event, not forty.** This is the stage that matters,
+  and its absence is why logs-in-Grafana is usually disappointing. Unfolded, an
+  exception arrives as its message followed by dozens of frames as separate
+  entries, the message scrolls off the top of the panel, and you are left holding
+  the middle of a trace with no idea what threw. Folding on "a new entry starts
+  with a timestamp" keeps the trace attached to the line that explains it — a
+  75-line `PSQLException` reads as one entry.
+- **Level is a label; nothing else is.** Grafana colours by the level label, so
+  ERROR lines are red without a transform. Logger and thread stay in the message:
+  promoting them would look tidier in a dropdown and would multiply Loki's
+  streams by every class that logs, which is the documented way to make a small
+  Loki slow.
+- **A missing level is `UNKNOWN`, not blank.** Postgres, Redpanda and Grafana do
+  not log in Spring Boot's format. Left empty they would vanish behind a level
+  filter, and the reader could not tell "nothing was logged" from "logged in a
+  format nobody taught the parser about".
+- **Grafana's own query log is dropped.** Grafana logs a line per datasource
+  query it proxies, so opening the logs dashboard produced log lines, which the
+  dashboard then displayed, which on a ten-second refresh buried the application
+  logs under a running commentary of the act of reading them. Everything else
+  Grafana logs is kept — a failed provisioning still has to be visible.
+
+The application logs stay human-readable on the console rather than becoming
+JSON. A JSON encoder would make all of the parsing above unnecessary and is the
+right answer for logs read by machines; it is the wrong answer here, because the
+console output is also what a person watches during a demo.
+
+Two notes on how this is wired, both of which a real deployment would change:
+
+- Alloy mounts the Docker socket read-only. Read access to that socket is
+  effectively root on the host — `:ro` limits what can be asked for, not what the
+  access is worth. It is here because collecting container stdout is the only way
+  to get these logs without changing every service to ship its own. A real
+  deployment would have the application write to a collector it is configured
+  with, or run the agent as a node-level daemon under its own policy.
+- Loki runs with `auth_enabled: false` and is **not** published to the host by
+  the base stack, because a published port would be an unauthenticated read of
+  every log line in it. `docker-compose.tools.yml` exposes it on 3100 for anyone
+  who wants to curl LogQL directly.
+
+```bash
+curl -sG localhost:3100/loki/api/v1/query_range \
+  --data-urlencode 'query={service="fraud-engine", level="ERROR"}'
+```
+
+---
+
 ## Repository layout
 
 ```
@@ -334,6 +399,8 @@ overwatch/
 │   ├── database/migration/      #   Flyway migrations — the schema
 │   └── observability/
 │       ├── prometheus/          #   Scrape configuration
+│       ├── loki/                #   Log store
+│       ├── alloy/               #   Log collection and parsing
 │       └── grafana/             #   Provisioned datasources and dashboards
 ├── tools/                       # Developer tooling, not shipped or deployed
 │   ├── overwatch-cli/           #   `ow` — the console as a terminal client
@@ -592,6 +659,7 @@ all: rule parameters are JSONB.
 | Flyway | Schema is versioned and applied identically on a fresh volume, an existing one, and in CI. Hibernate runs `ddl-auto: validate`, so a drift between entities and migrations fails at startup instead of silently corrupting data. |
 | React 18 + Vite | Fast dev loop, no framework overhead for what is a dashboard. |
 | Prometheus + Grafana | The default pairing for Micrometer, and provisioning-as-code means no manual setup. |
+| Loki + Grafana Alloy | Logs beside the metrics, in the tool already open. Alloy rather than Promtail, which reached end of life in early 2025 — the config is the same three stages, so using the deprecated agent would mean shipping advice not to follow. |
 | picocli | The CLI's subcommands, help and completion come from annotations on the classes that do the work, so the help cannot drift from the behaviour. It shades to a single 2.9MB jar with no runtime on the machine but a JVM. |
 
 Specialised financial stores (TigerBeetle and similar) were considered and set aside:
