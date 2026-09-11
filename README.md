@@ -792,8 +792,11 @@ anyone reading the code.
 
 `tools/postman/` holds a collection and a local environment. The folders are ordered as a
 guided tour: check health, inject a fraud pattern, watch the alert appear,
-disposition it, then use replay to decide a threshold change. The alert id is
-captured automatically by the list request, so nothing needs editing by hand.
+disposition it, use replay to decide a threshold change, then take the window
+away as a file. The alert id is captured automatically by the list request, so
+nothing needs editing by hand. Every request goes through `{{baseUrl}}`,
+including the simulator controls — `fraud-api` proxies those, so the tour runs
+against a plain `make up` with no second port to publish.
 
 ```
 tools/postman/Overwatch.postman_collection.json
@@ -871,6 +874,6 @@ the project plan.
 - **Hand-set rule weights.** A learned model would be more interesting and considerably less verifiable in the time available.
 - **Polling, not WebSockets.** Five seconds is imperceptible on a dashboard and a fraction of the complexity.
 - **No dead-letter topic.** A poison message is logged and counted rather than stalling the partition; a real deployment would route it somewhere.
-- **Alerts are written to PostgreSQL and published to Kafka in the same transaction.** The send is asynchronous, so a rollback after the send is initiated leaves an alert on the topic that does not exist in the database. The durable record is the database one and the topic is a notification, which bounds the damage — but the honest fix is a transactional outbox, or publishing after commit rather than inside it.
+- **Delivery is at-least-once, not exactly-once.** This is the gap the outbox traded for, and it is the better gap: an alert and its outbox row are written in one transaction, and a poller publishes from that table, so an alert can no longer exist on the topic without existing in the database. What can happen is the reverse — a publish that succeeds and a mark-as-published that does not, so the row is sent again on the next poll. Consumers must therefore be idempotent, and publication runs one 200ms poll behind the write. Both are visible: `outbox_pending` is the backlog and `outbox_oldest_pending_seconds` is how far behind it is.
 - **No Schema Registry.** Both topics carry plain JSON written by Spring's `JsonSerializer`, so a registry would have nothing in it — an empty registry reads as broken where "Not Configured" reads as a decision. The contract is enforced instead by the shared `services/common` module: producer and consumer compile against the same record, so a field rename breaks the build rather than a running consumer. That trade stops working the moment a consumer outside this repo subscribes, which is when a registry and a wire format that can carry a schema id start earning their keep.
 - **Replay ignores history-dependent rules.** Velocity and amount-deviation report nothing there rather than answering from a baseline that does not reflect the replayed window. A wrong answer delivered confidently is the failure mode worth avoiding in a tool meant to inform a threshold change.

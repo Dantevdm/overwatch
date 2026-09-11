@@ -87,9 +87,9 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{simulatorUrl}}/api/simulator/status",
+              "raw": "{{baseUrl}}/api/simulator/status",
               "host": [
-                "{{simulatorUrl}}"
+                "{{baseUrl}}"
               ],
               "path": [
                 "api",
@@ -106,9 +106,9 @@
             "method": "POST",
             "header": [],
             "url": {
-              "raw": "{{simulatorUrl}}/api/simulator/inject/COMPOUND",
+              "raw": "{{baseUrl}}/api/simulator/inject/COMPOUND",
               "host": [
-                "{{simulatorUrl}}"
+                "{{baseUrl}}"
               ],
               "path": [
                 "api",
@@ -126,9 +126,9 @@
             "method": "POST",
             "header": [],
             "url": {
-              "raw": "{{simulatorUrl}}/api/simulator/inject/VELOCITY_BURST",
+              "raw": "{{baseUrl}}/api/simulator/inject/VELOCITY_BURST",
               "host": [
-                "{{simulatorUrl}}"
+                "{{baseUrl}}"
               ],
               "path": [
                 "api",
@@ -146,9 +146,9 @@
             "method": "POST",
             "header": [],
             "url": {
-              "raw": "{{simulatorUrl}}/api/simulator/pause",
+              "raw": "{{baseUrl}}/api/simulator/pause",
               "host": [
-                "{{simulatorUrl}}"
+                "{{baseUrl}}"
               ],
               "path": [
                 "api",
@@ -165,9 +165,9 @@
             "method": "POST",
             "header": [],
             "url": {
-              "raw": "{{simulatorUrl}}/api/simulator/start",
+              "raw": "{{baseUrl}}/api/simulator/start",
               "host": [
-                "{{simulatorUrl}}"
+                "{{baseUrl}}"
               ],
               "path": [
                 "api",

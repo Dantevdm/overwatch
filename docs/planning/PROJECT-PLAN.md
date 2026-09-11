@@ -3,7 +3,7 @@
 A fraud rule engine service. This document tracks what we are building, what is
 done, and which decisions we have deliberately postponed.
 
-Last updated: 2026-09-09
+Last updated: 2026-09-11
 
 ---
 
@@ -39,7 +39,7 @@ rules are sensible.
 
 ## Architecture at a glance
 
-Three Spring Boot services, one message broker, one database, one UI.
+Three Spring Boot services, one message broker, one database, one UI, and a CLI.
 
 | Service | Port | Responsibility |
 |---|---|---|
@@ -139,8 +139,8 @@ adding one class that implements `FraudRule` — no schema migration.
 - [x] JPA entities and repositories
 - [x] SA merchant and card reference data (moves with the simulator, Phase 4)
 
-> **Verified.** Both migrations were applied to a real PostgreSQL 16 instance:
-> 5 tables, 20 indexes, 7 seeded rules. 11 constraint assertions passed (amount,
+> **Verified.** The migrations were applied to a real PostgreSQL 16 instance:
+> 6 tables, 32 indexes, 7 seeded rules. 11 constraint assertions passed (amount,
 > channel, weight bounds, rule state, name uniqueness, severity, foreign keys),
 > cascade delete was confirmed to clean up alerts, hits and shadow hits, and the
 > velocity query was checked against 60,000 rows — Index Only Scan, 0.027 ms.
@@ -149,7 +149,7 @@ adding one class that implements `FraudRule` — no schema migration.
 - [x] `FraudRule` interface, `RuleContext`, `RuleParameters`, `TransactionHistory` port
 - [x] Seven rule implementations (six live, one shipped in SHADOW)
 - [x] `RuleEngine` — score accumulation, shadow isolation, per-rule failure containment
-- [x] JPA entities and repositories for all five tables
+- [x] JPA entities and repositories for all six tables
 - [x] `RuleConfigProvider` — cached rule set, refreshed on a timer, survives a DB blip
 - [x] Kafka consumer for `transactions`, producer for `fraud-alerts`
 - [x] Micrometer business metrics — latency percentiles, alerts by rule, shadow hits
@@ -482,7 +482,7 @@ misplaced exactly; there was just no answer to "where does a new thing go".
 
 - [x] `services/` — the five Maven modules
 - [x] `infra/` — `database/`, `observability/`
-- [x] `tools/` — `postman/`, `quality/`
+- [x] `tools/` — `postman/`, `quality/`, and later `overwatch-cli/` (Phase 8.15)
 - [x] All moves via `git mv`, so `git log --follow` still works per file
 - [x] `_to_delete/` (29 stale pre-refactor files) and the unused `database/init/`
       removed
@@ -647,7 +647,7 @@ green; the Docker stack job reported six smoke-test failures with one cause.
 - [x] Actuator and Micrometer on all services
 - [x] Business metrics — latency percentiles, alerts by rule, shadow hits, ZAR flagged
 - [x] Prometheus scrape configuration
-- [x] Three pre-provisioned Grafana dashboards: pipeline health, fraud overview, rule performance
+- [x] Four pre-provisioned Grafana dashboards: pipeline health, fraud overview, rule performance, logs
 
 > Every PromQL expression was cross-checked against the meter names the engine
 > actually registers, so the dashboards are not querying metrics that do not exist.
@@ -684,10 +684,15 @@ green; the Docker stack job reported six smoke-test failures with one cause.
       three faults stacked so each hid the next; see Phase 8.14.
 
 ### Phase 8 — Delivery
-- [x] Postman collection — 22 requests in 6 folders, ordered as a guided tour
+- [x] Postman collection — 24 requests in 7 folders, ordered as a guided tour
 - [x] Environment file, with the alert id captured automatically
 - [x] README with a genuine one-command quickstart
 - [x] Verification pass — cold `docker compose up`, smoke test 20/20, `mvn verify` green
+
+> Those figures are what Phase 8 measured. The current ones, after everything
+> below, are **136 tests across six modules, 52 smoke checks, 54 dashboard
+> queries, twelve containers**. Every number quoted inside a phase note is what
+> that phase measured and is left alone; this line is the one to read for today.
 
 ---
 
@@ -768,6 +773,168 @@ cover security scanning and dependency CVEs natively on GitHub at no
 infrastructure cost. SonarQube Cloud remains an easy addition if the repository
 is made public.
 
+### Phase 8.15 — `ow`, the console as a terminal client
+
+- [x] `tools/overwatch-cli` — a sixth Maven module, picocli, shaded to one 2.9MB jar
+- [x] `bin/ow` launcher that finds a Java 25 JVM
+- [x] `status`, `top`, `alerts`, `txn`, `cardholder`, `rules`, `sim`, `sweep`, `reset`
+- [x] `make cli`
+- [x] The CLI's POM is copied into the Docker build but never built there
+
+> It talks to the same API the dashboard does. No second data path, no direct
+> database access, no privileged endpoint that exists only for it — so anything it
+> shows can be checked in the UI, and anything it changes shows up there.
+>
+> Three decisions carried the design. **Colour is an accelerator, never the
+> carrier**: a severity always prints its label, because this output goes into
+> pipes and terminals whose palettes a reader cannot distinguish, and "the red
+> ones" is not a specification. **Tables measure what they show**, ignoring escape
+> sequences, which is why columns line up even when half of them are coloured.
+> **`ow reset` refuses to guess** — it asks for the word `clear` rather than a
+> keystroke, and with no terminal to ask at it refuses outright and names `--yes`,
+> because the API behind it is destructive and unauthenticated.
+>
+> **What the first real run caught.** Money printed as `R420 79`: the en-ZA locale
+> uses a comma as the *decimal* separator, so replacing commas with spaces ate the
+> decimal point. `ow rules weight` returned 400 because the client sent the fields
+> as a query string and the API takes a body. And `ow sweep` offered rules that
+> cannot be swept, because it looked for a key the API does not return — the API
+> returns one list with a null parameter on the ones it cannot sweep.
+>
+> **And it broke the Docker build.** Maven reads every module named in a reactor
+> before `-pl` can select a subset, so the image failed with "child module
+> /build/tools/overwatch-cli does not exist". The fix is to copy the CLI's POM
+> only and restrict the build to the three services — the CLI is a developer tool
+> and has no business in a service image.
+
+### Phase 8.16 — The console as the thing it is imitating
+
+- [x] Capitec-derived theme, brand mark eye-matched rather than copied
+- [x] A mock sign-in screen, and a splash
+- [x] A welcome tour, once per browser
+
+> A demo console that looks like a generic admin template invites the reader to
+> evaluate the styling. One that looks like the product invites them to evaluate
+> the product.
+>
+> The sign-in screen is the one piece of this that needed an argument rather than
+> a decision, because a bank-branded login page is exactly the shape of a
+> credential harvester. It makes no network call, has no endpoint behind it,
+> discards the password on submit and never stores it, sets `autoComplete="off"`
+> on the form and `new-password` on the field, and carries a notice that cannot be
+> dismissed saying it authenticates nothing. The LICENSE carries the matching
+> trademark notice: not affiliated with Capitec, and the mock sign-in must not be
+> deployed where it could be mistaken for a bank's.
+
+### Phase 8.17 — Publishing from the database
+
+- [x] `V10__publish_from_the_database.sql` — `alert_outbox`, with partial indexes
+- [x] `OutboxEntity`, `OutboxRepository`, `OutboxPublisher`, `OutboxKafkaConfig`
+- [x] `FOR UPDATE SKIP LOCKED` claiming, a 200ms poll, hourly pruning
+- [x] `outbox_pending`, `outbox_oldest_pending_seconds`, published/failed counters
+- [x] Dashboard row, smoke checks, and the reset truncating the new table
+- [x] `PipelineIT` — a real Redpanda and a real PostgreSQL under Testcontainers
+
+> This closes a gap the plan never listed and the README did: the engine wrote an
+> alert to PostgreSQL and published it to Kafka inside the same transaction, and
+> the send is asynchronous, so a rollback after the send began left an alert on the
+> topic that did not exist in the database.
+>
+> The alert and its outbox row are now written in one transaction and a poller
+> publishes from that table. The trade is at-least-once delivery — a publish that
+> succeeds and a mark that does not is sent again — which is the better gap, and
+> both the backlog and its age are exported so it is visible rather than assumed.
+>
+> **The integration test earned its place immediately.** Declaring the outbox
+> `ProducerFactory` makes Boot's Kafka producer auto-configuration back off
+> entirely, which no unit test could have shown. And `buildProducerProperties()`
+> reads only the property, ignoring `KafkaConnectionDetails` — so the outbox
+> producer dialled `localhost:19092` while the rest of the context used the
+> container the test had started. Alerts were persisted and none were published,
+> and the fix is `ObjectProvider<KafkaConnectionDetails>`.
+>
+> **A comment that claimed too much.** I had written that the published bytes are
+> byte-identical to what the transaction wrote. They are not: `jsonb` stores a
+> parsed document, so whitespace and key order are normalised. The *document* is
+> preserved and invalid JSON is rejected at write time, which is the trade `jsonb`
+> makes against `text`, and six comments now say that instead.
+
+### Phase 8.18 — Logs beside the metrics
+
+- [x] Loki, and Grafana Alloy rather than the EOL Promtail
+- [x] A Logs dashboard, with service, level and search variables
+- [x] `verify-dashboards.py` extended to LogQL and Loki datasources
+
+> Four decisions in `config.alloy` are what make the result readable rather than
+> merely collected. **A Java stack trace is one event, not forty** — its absence
+> is why logs-in-Grafana is usually disappointing. **Level is a label and nothing
+> else is**, because promoting the logger would multiply Loki's streams by every
+> class that logs. **A missing level is `UNKNOWN`, not blank**, so Postgres and
+> Redpanda do not vanish behind a filter. **Grafana's own query log is dropped**,
+> because opening the logs dashboard produced log lines, which the dashboard then
+> displayed, which on a ten-second refresh buried the application logs under a
+> running commentary of the act of reading them.
+>
+> Loki runs unauthenticated and is deliberately not published to the host by the
+> base stack: a published port would be an unauthenticated read of every log line
+> in it. Alloy's Docker socket is mounted read-only, and the README says plainly
+> that read access to that socket is effectively root on the host.
+
+### Phase 8.19 — One transaction across three services and a broker
+
+- [x] Tempo, and `spring-boot-starter-opentelemetry`
+- [x] Kafka observation on the template and the listener
+- [x] Loki derived field → Tempo, and `tracesToLogsV2` back the other way
+
+> Three Boot 4 changes each failed silently on their own. The tracing bridge and
+> the OTLP exporter on the classpath auto-configure **nothing** without the
+> starter — Boot 4 no longer configures what is merely present. The OTLP
+> properties moved from `management.otlp.tracing.*` to
+> `management.opentelemetry.tracing.export.otlp.*`, and the old names bind to
+> nothing without complaint. And the default transport is HTTP on 4318 while Tempo
+> listens on gRPC 4317.
+>
+> The span worth having is the one across the broker, and it does not come for
+> free: a publish is not a call, so there is no stack to walk. It works because
+> `observation-enabled` is set on both the template and the listener, which writes
+> the trace context into the record headers.
+
+### Phase 8.20 — The window as a file
+
+- [x] `ExcelReport` (Apache POI), `PdfReport` + `PdfCanvas` + `PdfCharts` (PDFBox)
+- [x] `GET /api/reports/fraud-summary.{xlsx,pdf}`, a Reports screen, `ow report`
+- [x] Postman folder, smoke checks
+
+> Everything on the reports screen exists elsewhere in the console. What does not
+> exist elsewhere is a file, and without one the export is a screenshot of a
+> browser tab, which loses the figures, the window they cover and the date.
+>
+> Built by the API rather than the browser, so one definition of a report serves
+> the console, `curl`, Postman, the CLI and a scheduler, and the figures come from
+> the same `StatsService` the dashboard reads. A client-side exporter would be a
+> second implementation of every aggregate, drifting quietly from the first.
+>
+> A workbook is for someone who will work on it, so the charts are **native Excel
+> charts bound to the cells** and the figures are numbers carrying a cell format
+> rather than pre-formatted strings. A PDF is for someone who will read it, so the
+> charts are **vectors** — no charting library, because the report needs a bar
+> chart and a line chart and a general charting dependency would bring an AWT
+> surface and a theming API to draw four bars.
+>
+> **Two faults the drawing code had to be shown to find.** Bars were drawn half a
+> row below their labels, because `rect` takes a top edge and `text` a baseline.
+> And the largest value in a chart — the one a reader looks for — ran off the page,
+> because the bar filled the full width and its label was written past the end of
+> it. Both were obvious in a rendered page and invisible in the source.
+>
+> **And a check that lied about where the fault was.** The smoke test piped curl
+> into `head -c 4` to read a magic number. head exits at four bytes, curl dies of
+> EPIPE behind it, and `pipefail` reports a failed pipeline — but only when the
+> body arrives slowly enough that curl is still writing, which is true on CI
+> hardware and false on every machine I could reproduce on. The check now
+> downloads to a file and asserts the status and the bytes separately, so the
+> next failure names its own cause.
+
 ---
 
 ## Deferred decisions
@@ -778,8 +945,8 @@ becomes an accident.
 | # | Decision | Status | Reasoning |
 |---|---|---|---|
 | D1 | Live updates: WebSocket vs polling | Deferred | Polling every 5s is adequate for a demo and far simpler. Revisit if the dashboard feels sluggish. |
-| D2 | Authentication / authorisation | Deferred | Out of scope for the brief. The BFF is the natural seam — note it in the README as a known gap rather than half-implementing it. |
+| D2 | Authentication / authorisation | Deferred | Out of scope for the brief. The BFF is the natural seam — note it in the README as a known gap rather than half-implementing it. A **mock** sign-in screen ships with the UI as stage dressing: it makes no network call, has no endpoint, discards the password, and carries a notice saying it authenticates nothing. It is deliberately not a partial implementation, because half-built auth is worse than none — see Phase 8.16. |
 | D3 | Risk score weighting model | Deferred | Starting with hand-set weights per rule. A learned model is interesting but unverifiable in the time available. |
-| D4 | Redpanda Console in the compose stack | Deferred | Useful for demonstrating the event stream, but another container. Add only if the stack stays light. |
+| D4 | Redpanda Console in the compose stack | **Done — Phase 8.10** | The stack stayed light enough. Shipped read-only on `OW_CONSOLE_PORT` (8090), with its git integration pointed at a read-only local mount rather than a GitHub PAT, so no credential appears in `docker-compose.yml`. |
 | D6 | Multi-currency support | Deferred | Everything is ZAR. The `currency` column exists so this is additive, not a rewrite. |
 | D7 | Alert disposition workflow | Deferred | Alerts have a status field. Whether analysts can transition it from the UI depends on remaining time. |

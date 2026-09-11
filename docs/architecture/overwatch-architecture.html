@@ -257,15 +257,26 @@ p { font-size: 14px; line-height: 1.7; color: var(--fg); margin: 0 0 12px; }
   <div style="margin:0 0 28px;padding:14px 18px;border-left:3px solid var(--muted, #999);
               background:rgba(128,128,128,.07);border-radius:4px;font-size:13.5px;line-height:1.6">
     <strong>This is the design document, written before implementation.</strong>
-    It is kept as a record of the intended architecture, and the built system
-    follows it closely — but where the two disagree, the
+    It is kept as a record of what was intended, and the shape of the system still
+    matches it — three services, a broker, a database, a BFF. But it is no longer a
+    description of what exists, and it is not maintained as one: the
     <a href="../../README.md">README</a> describes what was actually built and is
-    the authority. Two known differences: the API ships without a
-    <code>/v1</code> path segment, and <code>/api/stats/trends</code> was folded
-    into <code>/api/stats/dashboard?rangeMinutes=N</code> rather than shipping as a
-    second endpoint. Rule updates are also narrower than drawn here — the routes
-    are <code>PATCH /api/rules/{id}/state</code> and
-    <code>PATCH /api/rules/{id}/weight</code>, not a general rule update.
+    the authority on every detail.
+    <br><br>
+    Outright factual errors have been corrected below where they would mislead — a
+    port, a path, a metric name — but the document has not been rewritten to cover
+    what was added after it: a CLI, a transactional outbox, log collection,
+    distributed tracing, report generation, and a Capitec-derived theme with a mock
+    sign-in. Read it for the reasoning, not for the inventory.
+    <br><br>
+    Differences worth naming, because a reader may be checking against them: the
+    API ships without a <code>/v1</code> segment;
+    <code>/api/stats/trends</code> was folded into
+    <code>/api/stats/dashboard?rangeMinutes=N</code>; rule updates are narrower
+    than drawn here, being <code>PATCH /api/rules/{id}/state</code> and
+    <code>PATCH /api/rules/{id}/weight</code> rather than a general update; and
+    alerts reach Kafka through an outbox table rather than the direct publish
+    drawn in the diagram.
   </div>
 
   <!-- 01 — Architecture Overview -->
@@ -386,7 +397,7 @@ p { font-size: 14px; line-height: 1.7; color: var(--fg); margin: 0 0 12px; }
     </div>
     <div class="decision">
       <span class="label">DECIDED</span>
-      <div><strong>React 18 + Vite</strong> — Lightweight, fast HMR, minimal boilerplate. Recharts for charts (lightweight, React-native). Design tokens from i1 design system foundations.</div>
+      <div><strong>React 18 + Vite</strong> — Lightweight, fast HMR, minimal boilerplate. Charts are hand-authored SVG in the end, not a charting library. Design tokens from i1 design system foundations.</div>
     </div>
     <div class="decision">
       <span class="label">DECIDED</span>
@@ -537,7 +548,7 @@ public class RuleEngine {
     </div>
 
     <p style="margin:0 0 18px">The schema is owned by <strong>Flyway</strong>. Migrations are versioned and
-    immutable, living in <code>common/src/main/resources/db/migration</code> so both datasource-owning
+    immutable, living in <code>infra/database/migration</code> so both datasource-owning
     services apply one source of truth. Flyway locks its schema-history table, so concurrent startup is
     safe. Hibernate runs <code>ddl-auto: validate</code> and never creates or alters anything — it only
     asserts the entities match what Flyway built, so drift fails at startup rather than corrupting data.</p>
@@ -550,6 +561,7 @@ public class RuleEngine {
         <tr><td><code>fraud_alerts</code></td><td>Alerts raised, with accumulated risk score and analyst status</td></tr>
         <tr><td><code>alert_rule_hits</code></td><td>Every rule that contributed to an alert, not just the strongest</td></tr>
         <tr><td><code>shadow_rule_hits</code></td><td>Hits from SHADOW rules, which raise no alert to attach to</td></tr>
+        <tr><td><code>alert_outbox</code></td><td>Added later. Written in the same transaction as the alert it describes; a poller publishes it to Kafka, so an alert can never exist on the topic without existing here</td></tr>
       </tbody>
     </table>
 
@@ -766,7 +778,7 @@ CREATE TABLE shadow_rule_hits (
           <tr>
             <td style="font-weight:500">overwatch-ui</td>
             <td><code>overwatch/ui</code></td>
-            <td><code>3000</code></td>
+            <td><code>5173</code></td>
             <td>fraud-api</td>
           </tr>
           <tr>
@@ -778,14 +790,42 @@ CREATE TABLE shadow_rule_hits (
           <tr>
             <td style="font-weight:500">grafana</td>
             <td><code>grafana/grafana</code></td>
-            <td><code>3001</code></td>
-            <td>prometheus</td>
+            <td><code>3000</code></td>
+            <td>prometheus, loki, tempo</td>
+          </tr>
+          <tr>
+            <td style="font-weight:500">redpanda-console</td>
+            <td><code>redpandadata/console</code></td>
+            <td><code>8090</code></td>
+            <td>redpanda</td>
+          </tr>
+          <tr>
+            <td style="font-weight:500">loki</td>
+            <td><code>grafana/loki</code></td>
+            <td>internal</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td style="font-weight:500">tempo</td>
+            <td><code>grafana/tempo</code></td>
+            <td>internal</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td style="font-weight:500">alloy</td>
+            <td><code>grafana/alloy</code></td>
+            <td>internal</td>
+            <td>loki</td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <p style="margin-top:12px">Total: <strong>8 containers</strong>. A single <code>docker compose up</code> brings up the entire stack. Init script seeds the database with default fraud rules and creates Redpanda topics.</p>
+    <p style="margin-top:12px">Total: <strong>12 containers</strong>, of which exactly five publish a host port —
+    the API, the UI, Prometheus, Grafana and the Redpanda Console. Loki, Tempo and Alloy stay inside the
+    compose network deliberately: a published Loki port would be an unauthenticated read of every log line
+    in it. A single <code>docker compose up</code> brings up the whole stack.
+    There is no init script — Flyway owns the schema and the seeded rules, and the engine creates its topics.</p>
   </section>
 
   <!-- 09 — Dashboard Screens -->
@@ -795,7 +835,10 @@ CREATE TABLE shadow_rule_hits (
       <h2 class="section-title">Dashboard screens</h2>
     </div>
 
-    <p>Four pages following the i1 design system — brand sidebar, topbar, stat tiles with icons, data tables with status badges, charts with the brand color ramp.</p>
+    <p>Four pages were drawn. Ten shipped — Dashboard, Transactions, Cardholders, Alerts, Rules,
+    Simulator, Metrics, Streams, Reports and an API explorer — grouped in the sidebar under
+    Monitor, Investigate, Configure and Platform, and the theme is Capitec-derived rather than the
+    i1 foundations sketched here. The four below are the ones this document designed.</p>
 
     <div class="grid-2">
       <div class="card">
@@ -813,7 +856,7 @@ CREATE TABLE shadow_rule_hits (
           <span>• Searchable, filterable table (i1 list manager pattern)</span>
           <span>• Filters: category, channel, date range, flagged only</span>
           <span>• Click row → detail panel with linked alerts</span>
-          <span>• Amount displayed with $ and proper formatting</span>
+          <span>• Amount displayed in ZAR, grouped and prefixed R</span>
         </div>
       </div>
       <div class="card">
@@ -844,16 +887,22 @@ CREATE TABLE shadow_rule_hits (
       <h2 class="section-title">Observability</h2>
     </div>
 
-    <p>All three Spring Boot services expose <code>/actuator/prometheus</code>. Prometheus scrapes at 15s intervals. Grafana ships with a pre-provisioned dashboard.</p>
+    <p>All three Spring Boot services expose <code>/actuator/prometheus</code>. Prometheus scrapes at 15s intervals.
+    Grafana ships with <strong>four</strong> pre-provisioned dashboards and three provisioned datasources —
+    Prometheus for metrics, Loki for logs and Tempo for traces — so a trace id in a log line is a link rather
+    than a copy-paste. The metric names sketched below were all renamed during implementation; the README's
+    metric table is the list that exists.</p>
 
     <div class="grid-2">
       <div class="card">
         <div class="card-title">Custom Metrics</div>
         <div style="font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:6px">
-          <span><code>overwatch_transactions_total</code> — counter</span>
-          <span><code>overwatch_alerts_total{severity}</code> — counter</span>
-          <span><code>overwatch_rule_eval_duration_ms</code> — histogram</span>
-          <span><code>overwatch_engine_lag</code> — gauge (consumer lag)</span>
+          <span><code>transactions_processed_total</code> — counter, by category and channel</span>
+          <span><code>fraud_alerts_by_rule_total</code> — counter</span>
+          <span><code>fraud_detection_latency_seconds_bucket</code> — histogram, not a summary</span>
+          <span><code>fraud_risk_score_bucket</code> / <code>fraud_amount_flagged_zar_bucket</code> — histograms</span>
+          <span><code>outbox_pending</code> / <code>outbox_oldest_pending_seconds</code> — gauges</span>
+          <span><code>kafka_consumer_fetch_manager_records_lag</code> — gauge (consumer lag)</span>
         </div>
       </div>
       <div class="card">

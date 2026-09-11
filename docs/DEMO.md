@@ -20,7 +20,7 @@ Do this a few minutes ahead, not while someone is watching.
 
 ```bash
 make up                      # resolves port conflicts, then starts the stack
-./scripts/smoke-test.sh      # 35 checks — health, metrics, targets, broker, DB
+./scripts/smoke-test.sh      # 52 checks — health, metrics, broker, DB, outbox, logs, reports
 ```
 
 Then leave the stack running for **at least ten minutes** before you demonstrate.
@@ -41,7 +41,17 @@ Check which ports you actually got, because preflight may have moved them:
 make urls
 ```
 
-Open these five tabs in this order, and leave them open:
+Two things happen before the app that will surprise you if nobody warned you:
+
+- **A sign-in screen.** It authenticates nothing — no network call, the password
+  is discarded — and says so on the screen. The analyst is prefilled, so Enter
+  goes straight through. It is stage dressing for the demo, and the code says so
+  at length; see the question about authentication below, because someone who has
+  just watched you log in *will* ask.
+- **A welcome tour**, once per browser. Dismiss it beforehand, or leave it if you
+  want the room to see it.
+
+Open these tabs in this order, and leave them open:
 
 | Tab | Why |
 |---|---|
@@ -49,11 +59,16 @@ Open these five tabs in this order, and leave them open:
 | Alerts — `/alerts` | The centrepiece |
 | Rules — `/rules` | Shadow mode and replay |
 | Metrics — `/metrics` | Grafana, framed |
+| Reports — `/reports` | The closing beat: take it away as a file |
 | Redpanda Console | The proof that streaming is real |
 
-Everything except the console is one app. The console, Grafana and Prometheus are
-also linked from **External tools** at the foot of the sidebar, so you do not have
-to remember a port mid-sentence.
+Everything except the console is one app. Grafana, the logs dashboard,
+Prometheus, the console and the API docs are all linked from **External tools** at
+the foot of the sidebar, so you do not have to remember a port mid-sentence.
+
+If you would rather drive from a terminal than a browser, `./bin/ow` is the same
+console as a CLI against the same API — `ow top` is a live pipeline view that
+projects well, and `ow sim inject COMPOUND` is Act II in one line.
 
 ---
 
@@ -103,6 +118,25 @@ Show the consumer group and its lag sitting near zero.
 > "And that is the number that tells you detection is keeping pace with ingestion.
 > If this climbs, the engine is behind — which is a completely different problem
 > from the engine being wrong, and the dashboards keep them separate."
+
+If the room is technical, this is the moment for the two answers that usually only
+come up in a code review:
+
+> "Two services and a broker means two places a message can be lost. An alert is
+> written to the database and a row is written to an outbox table in the *same*
+> transaction; a poller publishes from that table and marks it sent. So an alert
+> can never exist on the topic without existing in the database. The trade is
+> at-least-once delivery — a publish that succeeds and a mark that does not gets
+> sent again — and the backlog and its age are both on the pipeline dashboard."
+
+> "And when you want to follow one transaction across all of it, there is a trace.
+> The producer's span is the parent of the consumer's span across the broker,
+> because the trace context rides in the record headers. Every log line carries its
+> trace id, and the logs dashboard turns that into a link into the trace."
+
+A Kafka publish is not a call — the producer returns long before anyone consumes —
+so that parent-child link is the part people assume does not work, and it is worth
+showing rather than asserting.
 
 ---
 
@@ -225,8 +259,10 @@ you evaluate the ones replay honestly cannot.
 
 **Finish on Metrics** — the Grafana dashboards, framed one tab each.
 
-> "Three dashboards: is the pipeline keeping up, what are the rules catching, and
-> which rules are earning their place. All provisioned as code, so they exist the
+> "Four dashboards: is the pipeline keeping up, what are the rules catching,
+> which rules are earning their place, and what everything was complaining about —
+> that last one is every container's log, in the same tool, with Java stack traces
+> folded into the line that threw them. All provisioned as code, so they exist the
 > moment the stack starts — nobody imports a JSON file."
 
 If you want one technical detail here, make it this one:
@@ -237,10 +273,26 @@ If you want one technical detail here, make it this one:
 > ran `histogram_quantile()` against metrics exported as summaries — every metric
 > name matched, nothing warned, and a blank panel looks exactly like a quiet one.
 > So there is now a script that runs every panel's query against a live Prometheus
-> and fails the build on any that returns no series. CI runs it on every push."
+> and Loki and fails the build on any that returns no data. Fifty-four queries, and
+> CI runs it on every push."
 
 That last point tends to land better than anything about the rules, because it is
 about knowing when you are wrong.
+
+**Close on Reports.** Pick a window and press **Download .pdf**.
+
+> "Everything I have shown you lives on a screen, and a fraud lead's Monday ends
+> with a document attached to an email. So the window you are looking at leaves as
+> a file — a PDF to read, or a workbook whose charts are real Excel charts bound to
+> the cells, so you can re-sort the rule table and the chart follows."
+
+Open the file. It is a good last thing to be on screen, because it is the whole
+demo in three pages and the room can be handed a copy of it.
+
+> "It is built by the API rather than the browser, which means the same document
+> comes out of `curl`, out of Postman, out of `ow report pdf`, or out of a cron
+> job at six on a Monday — and the figures come from the same service the dashboard
+> reads, so the report cannot quietly disagree with the screen it came from."
 
 ---
 
@@ -252,8 +304,10 @@ If that is all you have, do this and nothing else:
 2. **Simulator: rate to 1/s, inject `COMPOUND`. 30s.**
 3. **Alerts: open the CRITICAL. 2 min.** Five rules, weights summing to 1.30,
    capped at 1.0. Scoring is a model, not a switch. *This is the demo.*
-4. **Rules: the SHADOW row, then one replay call. 2 min.** The system can tell you
+4. **Rules: the SHADOW row, then one replay call. 90s.** The system can tell you
    whether its own rules are worth keeping.
+5. **Reports: download the PDF. 30s.** They leave with the artefact rather than
+   with a memory of a dashboard.
 
 Skip the console and Grafana. Mention they exist and are linked from the sidebar.
 
@@ -261,8 +315,12 @@ Skip the console and Grafana. Mention they exist and are linked from the sidebar
 
 ## Questions you will get
 
-**"Is any of this authenticated?"** No, and that is deliberate rather than
-overlooked — it is in the README's known gaps. The BFF is the natural seam. The
+**"Is any of this authenticated?"** No — and the sign-in screen you just watched
+me use is the reason to be explicit about it. It authenticates nothing: no network
+call, no endpoint, the password is discarded and never stored, and the screen
+carries a notice saying so that cannot be dismissed. It is there so the console
+looks like the thing it is imitating, not to imply the gap is closed. The gap is
+deliberate rather than overlooked, and it is in the README's known gaps. The BFF is the natural seam. The
 sharpest edge is `POST /api/admin/reset`, which destroys data, so it sits behind a
 config flag (`ALLOW_RESET`) and is named as the first route that should demand a
 role once auth exists. Half-built auth is worse than none.
@@ -277,17 +335,22 @@ transactions.** And the Rules screen shows each rule's actual share of alerts, s
 rule that fires on everything is visible rather than inferred.
 
 **"What is the test coverage?"** `mvn verify` is the gate and it fails the build,
-not just the report: 80 tests, a JaCoCo line-coverage floor, SpotBugs with
-find-sec-bugs (~130 security detectors), and PMD. CI additionally applies the
-Flyway migrations to a real PostgreSQL and asserts the resulting schema, then
-brings the whole stack up and smoke-tests it.
+not just the report: 136 tests across six modules, a JaCoCo line-coverage floor,
+SpotBugs with find-sec-bugs (~130 security detectors), and PMD. One of those tests
+starts a real Redpanda and a real PostgreSQL under Testcontainers and drives a
+transaction all the way to a published alert — it found two faults within an hour
+of being written that no unit test could have. CI additionally applies the Flyway
+migrations to a real PostgreSQL and asserts the resulting schema, then brings the
+whole stack up and smoke-tests it.
 
 **"Why three services instead of one?"** So the engine scales independently of the
 API, and a slow consumer never applies back-pressure to whoever is querying alerts.
 The stream is the seam that makes that true rather than aspirational.
 
 **"Could this handle real volume?"** Not as configured — it is one broker partition
-set, one engine instance, 6 hours of Prometheus retention. Nothing in the design
+set, one engine instance, 6 hours of Prometheus retention. The shutdown path is
+real, at least: all three services shut down gracefully with a 20-second drain, so
+a rolling restart finishes what it is holding instead of dropping it. Nothing in the design
 prevents it: the engine is a stateless consumer, so it scales by adding instances
 and partitions. Worth saying plainly rather than claiming otherwise.
 
@@ -309,8 +372,14 @@ at 1/s from Act II, or paused. `POST /api/simulator/start`.
 **Nothing at all is responding.** Check you are on the right ports; preflight
 reassigns them when something else holds the default. `make urls`.
 
+**You need to know why something failed, on screen.** The **Logs** link in the
+sidebar opens a Grafana dashboard over every container's log, filtered by service
+and level, with stack traces folded into one entry. It is a far better thing to
+have open in front of a room than `docker compose logs -f`, which interleaves
+twelve containers into a stream nobody can read.
+
 **You need a clean slate.** **Clear data** in the top right empties transactions,
-alerts and rule hits, and resets the simulator's counters. It keeps rules, so a
+alerts, rule hits and the outbox, and resets the simulator's counters. It keeps rules, so a
 threshold you just tuned survives — and it keeps the Prometheus counters, because
 those are monotonic by contract and zeroing them writes a false spike into every
 panel. So straight after a reset the dashboard reads zero while Grafana still shows
