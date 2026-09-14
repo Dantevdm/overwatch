@@ -56,7 +56,7 @@
              are here rather than a client-side exporter because one definition of
              a report should serve the browser, the CLI and Postman alike. -->
         <poi.version>5.4.1</poi.version>
-        <pdfbox.version>3.0.5</pdfbox.version>
+        <pdfbox.version>3.0.8</pdfbox.version>
 
         <!-- Quality tooling -->
         <!-- 0.8.13 is the first release that reads Java 25 bytecode. 0.8.12
