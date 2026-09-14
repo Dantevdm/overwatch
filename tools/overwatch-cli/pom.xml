@@ -23,7 +23,7 @@
 
     <properties>
         <picocli.version>4.7.6</picocli.version>
-        <shade.version>3.6.0</shade.version>
+        <shade.version>3.6.2</shade.version>
         <!-- No coverage floor. This module is presentation: argument parsing,
              HTTP calls and table formatting. What is worth asserting here is
              the formatting logic, and that is what the tests cover. -->
