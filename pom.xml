@@ -75,7 +75,7 @@
         <findsecbugs.version>1.13.0</findsecbugs.version>
         <pmd.plugin.version>3.26.0</pmd.plugin.version>
         <pmd.core.version>7.27.0</pmd.core.version>
-        <dependency-check.version>10.0.4</dependency-check.version>
+        <dependency-check.version>13.0.0</dependency-check.version>
         <!-- Coverage floor, overridden per module.
              The default is zero on purpose. Coverage is enforced where there is
              logic to cover: the domain model and the rule engine, which hold
