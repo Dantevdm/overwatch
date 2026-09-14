@@ -55,7 +55,7 @@
              the reference implementation for their format on the JVM, and both
              are here rather than a client-side exporter because one definition of
              a report should serve the browser, the CLI and Postman alike. -->
-        <poi.version>5.4.1</poi.version>
+        <poi.version>5.5.1</poi.version>
         <pdfbox.version>3.0.5</pdfbox.version>
 
         <!-- Quality tooling -->
