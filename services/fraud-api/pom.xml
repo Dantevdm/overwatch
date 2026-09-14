@@ -78,10 +78,14 @@
             <artifactId>rule-engine</artifactId>
         </dependency>
 
-        <!-- Reports. POI carries a transitive commons-compress/xmlbeans tail and
-             is about 12MB on the image; it earns that by writing a workbook whose
-             charts are real Excel chart objects, so a reader can retarget a series
-             or change a chart type instead of looking at a picture of one. -->
+        <!-- Reports. Measured, not estimated: POI and its transitive tail
+             (xmlbeans, commons-compress, the ooxml-lite schema jar) add 15MB to
+             the fat jar and PDFBox a further 3.6MB. POI earns its share by
+             writing a workbook whose charts are real Excel chart objects, so a
+             reader can retarget a series or change a chart type instead of
+             looking at a picture of one. Note ooxml-lite alone is 5.7MB and is
+             the trimmed schema set — the full one is larger again, which is why
+             ExcelReport draws a stacked area rather than stacked columns. -->
         <dependency>
             <groupId>org.apache.poi</groupId>
             <artifactId>poi-ooxml</artifactId>
