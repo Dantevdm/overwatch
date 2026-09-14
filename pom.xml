@@ -64,16 +64,16 @@
              instrumenting, which fails `verify` on every module — the same
              lag documented for SpotBugs and PMD below, so all three analysers
              are pinned forward deliberately rather than left to defaults. -->
-        <jacoco.version>0.8.13</jacoco.version>
-        <spotbugs.plugin.version>4.10.4.0</spotbugs.plugin.version>
+        <jacoco.version>0.8.15</jacoco.version>
+        <spotbugs.plugin.version>4.10.4.1</spotbugs.plugin.version>
         <!-- Pinned explicitly, not left to whatever the plugin bundles. Static
              analysers lag new JDKs: SpotBugs before 4.10 cannot read Java 25
              bytecode at all (class file major version 69), and PMD only learned
              Java 25 in 7.18. Both would fail the build on a language version the
              compiler is perfectly happy with. -->
         <spotbugs.core.version>4.10.4</spotbugs.core.version>
-        <findsecbugs.version>1.13.0</findsecbugs.version>
-        <pmd.plugin.version>3.26.0</pmd.plugin.version>
+        <findsecbugs.version>1.14.0</findsecbugs.version>
+        <pmd.plugin.version>3.28.0</pmd.plugin.version>
         <pmd.core.version>7.27.0</pmd.core.version>
         <dependency-check.version>10.0.4</dependency-check.version>
         <!-- Coverage floor, overridden per module.
